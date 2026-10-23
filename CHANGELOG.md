@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] - 2026-10-23
+
+### Fixed
+- **Open Source Licensing Parity:** Removed outdated "All rights reserved" notice from the sidebar footer in `FeedSidebar.tsx` to align with the open-source MIT License; linked copyright text to project repository and added direct link to `LICENSE`.
+- **Feedback Privacy Transparency:** Added explicit "100% Local & Private" isolation assurance indicator to the History view in `FeedbackModal.tsx`, confirming feedback stays strictly on local SQLite and Obsidian storage with zero remote telemetry.
+
 ## [1.0.0] - 2026-10-23
 
 ### Initial Open Source Release

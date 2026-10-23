@@ -707,8 +707,22 @@ export function FeedSidebar({
           </span>
         </div>
         <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
-          <span>{COPYRIGHT_NOTICE}</span>
-          <span className="text-[9px] text-slate-400 dark:text-slate-600">All rights reserved</span>
+          <a
+            href={process.env.NEXT_PUBLIC_GITHUB_REPO_URL || "https://github.com/Haribu/synapse"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          >
+            {COPYRIGHT_NOTICE}
+          </a>
+          <a
+            href={`${process.env.NEXT_PUBLIC_GITHUB_REPO_URL || "https://github.com/Haribu/synapse"}/blob/main/LICENSE`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[9px] text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400 transition-colors underline-offset-2 hover:underline"
+          >
+            MIT License
+          </a>
         </div>
       </div>
     </aside>

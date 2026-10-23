@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Server,
   ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
 
@@ -240,7 +241,14 @@ export function FeedbackModal({
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 pb-1">
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/70 dark:border-emerald-800/40 text-[11px] text-emerald-800 dark:text-emerald-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>
+                    <strong>100% Local & Private:</strong> Feedback history is strictly preserved in your local SQLite database & Obsidian vault. Zero external telemetry or remote sharing.
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 pt-1 pb-0.5">
                   <span>Open items & past 7 days closed</span>
                   <a
                     href={process.env.NEXT_PUBLIC_GITHUB_REPO_URL ? `${process.env.NEXT_PUBLIC_GITHUB_REPO_URL}/issues` : "https://github.com/Haribu/synapse/issues"}
