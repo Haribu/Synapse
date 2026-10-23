@@ -1,0 +1,43 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Next.js build
+.next/
+out/
+build/
+dist/
+
+# Local SQLite databases & journals
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+/data/*.sqlite
+/data/*.sqlite-wal
+/data/*.sqlite-shm
+
+# Environment & credentials
+.env
+.env*.local
+docker-compose.override.yml
+*.pem
+
+# Obsidian local sync mount / local test files
+/obsidian-vault/
+*.opml.tmp
+*.opml
+
+# Local scratch and test capture artifacts
+scratch/
+backups/
+/data/
+ISA.md
+GEMINI.md
+*.tsbuildinfo
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
+
