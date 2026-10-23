@@ -1,0 +1,17 @@
+# Cloudflare Tunnel Configuration for Synapse
+# File: ~/.cloudflared/config.yml or deploy/cloudflare/tunnel-config.yml
+
+tunnel: <YOUR_TUNNEL_UUID_OR_NAME>
+credentials-file: ~/.cloudflared/<YOUR_TUNNEL_UUID>.json
+
+ingress:
+  # Route your custom subdomain to local Synapse instance (e.g. port 3000 or 3005)
+  - hostname: synapse.yourdomain.com
+    service: http://localhost:3000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      http2Origin: true
+
+  # Fallback catch-all
+  - service: http_status:404

@@ -1,0 +1,22 @@
+# docker-compose.override.yml.example
+# Copy this file to docker-compose.override.yml to customize your local instance.
+# Docker Compose will automatically merge it with docker-compose.yml.
+# docker-compose.override.yml is gitignored so your personal paths remain private.
+#
+# Note: To change the host port, set HOST_PORT in your .env file:
+#   HOST_PORT=127.0.0.1:3005
+
+services:
+  synapse:
+    environment:
+      # Optional: Enable Obsidian integration by mounting your vault into /obsidian-vault
+      - OBSIDIAN_VAULT_PATH=/obsidian-vault
+      # Optional: Enable Cloudflare Access or Reverse-Proxy header auth
+      # - AUTH_MODE=cloudflare
+      # - ALLOWED_EMAILS=user@example.com
+
+    volumes:
+      # Mount your local Obsidian vault directory (e.g. on macOS or Linux)
+      # - "/Users/yourname/Documents/Obsidian:/obsidian-vault"
+      # Optional: Mount local backups directory
+      # - ./backups:/app/backups

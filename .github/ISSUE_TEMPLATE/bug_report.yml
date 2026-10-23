@@ -1,0 +1,54 @@
+name: 🐛 Bug Report
+description: File a bug report to help us improve Synapse
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible.
+  - type: input
+    id: version
+    attributes:
+      label: Synapse Version
+      description: What version of Synapse are you running? (e.g. 1.0.0-rc1, latest Docker tag)
+      placeholder: "1.0.0-rc1"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Deployment Environment
+      options:
+        - Docker Compose (Linux / Ubuntu / Debian)
+        - Docker Desktop (macOS Apple Silicon)
+        - Docker Desktop (macOS Intel)
+        - Docker Desktop (Windows WSL2)
+        - Bare metal Bun dev server
+        - Other (specify in description)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Screenshots
+      description: Paste any container logs (`docker logs synapse-reader`) or browser console errors here.
+      render: shell

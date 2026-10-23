@@ -1,0 +1,33 @@
+services:
+  synapse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: synapse-reader
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - SYNAPSE_DATA_DIR=/app/data
+      - SYNAPSE_BACKUP_DIR=/app/backups
+      - SYNAPSE_API_KEY=${SYNAPSE_API_KEY:-}
+      - OBSIDIAN_VAULT_PATH=${OBSIDIAN_VAULT_PATH:-}
+      - AUTH_MODE=${AUTH_MODE:-none}
+      - ALLOWED_EMAILS=${ALLOWED_EMAILS:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY:-}
+      - GOOGLE_OAUTH_ACCESS_TOKEN=${GOOGLE_OAUTH_ACCESS_TOKEN:-}
+    volumes:
+      - synapse_data:/app/data
+      - ./backups:/app/backups
+    healthcheck:
+      test:
+        ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  synapse_data:
+    name: synapse_data
