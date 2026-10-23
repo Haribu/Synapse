@@ -23,6 +23,8 @@ import { fileURLToPath } from "url";
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const pkgPath = resolve(rootDir, "package.json");
 const versionFilePath = resolve(rootDir, "src/lib/version.ts");
+const readmePath = resolve(rootDir, "README.md");
+const changelogPath = resolve(rootDir, "CHANGELOG.md");
 
 function getGitCommit(): string {
   try {
@@ -119,6 +121,37 @@ export const COPYRIGHT_NOTICE = \`© \${COPYRIGHT_YEAR} \${COPYRIGHT_OWNER}\`;
 
   writeFileSync(versionFilePath, versionFileContent, "utf-8");
   console.log(`✓ Updated src/lib/version.ts`);
+
+  // 3. Update README.md version badge if present
+  try {
+    let readme = readFileSync(readmePath, "utf-8");
+    const badgeRegex = /\[!\[Version: [^\]]+\]\(https:\/\/img\.shields\.io\/badge\/Version-[^)]+\)\]/g;
+    const newBadge = `[![Version: ${nextVersion}](https://img.shields.io/badge/Version-${nextVersion}-emerald.svg)]`;
+    if (badgeRegex.test(readme)) {
+      readme = readme.replace(badgeRegex, newBadge);
+      writeFileSync(readmePath, readme, "utf-8");
+      console.log(`✓ Updated README.md version badge`);
+    }
+  } catch (err: any) {
+    console.warn(`⚠️ Could not update README.md badge:`, err.message);
+  }
+
+  // 4. Ensure CHANGELOG.md contains entry for new version
+  try {
+    let changelog = readFileSync(changelogPath, "utf-8");
+    const versionHeader = `## [${nextVersion}]`;
+    if (!changelog.includes(versionHeader)) {
+      const scaffold = `\n## [${nextVersion}] - ${buildDate}\n\n### Added\n- \n\n### Changed\n- \n\n### Fixed\n- \n`;
+      changelog = changelog.replace(/---(\s*\n## \[)/, `---${scaffold}\n## [`);
+      writeFileSync(changelogPath, changelog, "utf-8");
+      console.log(`✓ Scaffolding new section in CHANGELOG.md for v${nextVersion}`);
+    } else {
+      console.log(`✓ CHANGELOG.md already has section for v${nextVersion}`);
+    }
+  } catch (err: any) {
+    console.warn(`⚠️ Could not check/update CHANGELOG.md:`, err.message);
+  }
+
   console.log(`\n🎉 Successfully bumped to v${nextVersion}!\n`);
 }
 

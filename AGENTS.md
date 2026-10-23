@@ -50,8 +50,14 @@ The following actions should ONLY be executed when explicitly requested for depl
 
 ### D. Version Bumping & SemVer Protocol (MANDATORY)
 
-- **Always Bump Version on Features & Fixes:** Never deploy or release updates without incrementing the SemVer version (`1.0.0-rc1` ➔ `1.0.0-rc2` ➔ `1.0.0`).
-- **Automated Bumper:** Run `bun run bump [rc|patch|minor|major]` to simultaneously increment `package.json` and synchronize `src/lib/version.ts` with the current git commit hash and build date.
+- **Always Bump Version on Features & Fixes:** Never deploy or release updates without incrementing the SemVer version (`1.0.0` ➔ `1.0.1` or `1.1.0`).
+- **Automated Bumper:** Run `bun run bump [rc|patch|minor|major]` to simultaneously increment `package.json`, synchronize `src/lib/version.ts`, update the version badge in `README.md`, and scaffold the new release section in `CHANGELOG.md`.
+
+### E. Continuous Push & Documentation Parity (MANDATORY)
+
+- **Push Early and Often:** Commit and push verified changes (`bun test && bun x tsc --noEmit`) to `main` frequently to prevent monolithic unreviewed drift.
+- **Zero Documentation Drift:** Whenever APIs, components, or configuration options change, update `CHANGELOG.md`, `README.md`, and `API.md` within the same commit.
+- **Release Tagging:** Whenever a SemVer release or patch is finalized, create and push an annotated git tag (`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`) to trigger the automated GHCR container publisher.
 
 ---
 
