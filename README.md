@@ -2,11 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-emerald.svg)](./package.json)
-[![Next.js](https://img.shields.io/badge/Next.js-15_App_Router-black)](https://nextjs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB)](https://react.dev/)
-[![SQLite](https://img.shields.io/badge/SQLite-WAL_FTS5-003B57)](https://www.sqlite.org/)
+[![CI](https://github.com/Haribu/synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Haribu/synapse/actions)
+[![Container](https://img.shields.io/badge/GHCR-ghcr.io%2Fharibu%2Fsynapse-blue)](https://github.com/Haribu/synapse/pkgs/container/synapse)
 [![MCP](https://img.shields.io/badge/MCP-Native_Server-8A2BE2)](./scripts/mcp-server.ts)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)](https://www.docker.com/)
+[![AI Agents](https://img.shields.io/badge/AI%20Agents-AGENTS.md-blueviolet)](./AGENTS.md)
 
 ![Synapse — Editorial Sanctuary & AI Knowledge Engine](./public/hero-preview.svg)
 
@@ -19,7 +18,21 @@ Synapse is a self-hosted, privacy-first **Dual-Surface Knowledge Platform**:
 
 ## ⚡ 1-Minute Quickstart
 
-Synapse runs anywhere Docker is installed.
+Run Synapse with zero build steps directly from the GitHub Container Registry, or clone the repository:
+
+### Option A: Prebuilt Docker Image (Instant)
+
+```bash
+docker run -d \
+  --name synapse \
+  -p 3000:3000 \
+  -v synapse_data:/app/data \
+  ghcr.io/haribu/synapse:latest
+
+open http://localhost:3000
+```
+
+### Option B: Clone & Compose
 
 ```bash
 # 1. Clone the repository
@@ -153,7 +166,17 @@ bun run db:backup    # Trigger atomic database snapshot
 bun run db:check     # Run database integrity check
 ```
 
-Review [CONTRIBUTING.md](./CONTRIBUTING.md) for full pull request guidelines.
+Review [CONTRIBUTING.md](./CONTRIBUTING.md) for pull request guidelines.
+
+---
+
+## 🤖 For AI Agents & Autonomous Collaborators
+
+If you are an AI coding agent (Claude Code, Antigravity, Cursor, Devin, Codex) executing work on this codebase:
+
+1. **Read [AGENTS.md](./AGENTS.md) first:** It codifies the architecture, sandbox rules, database integrity anti-corruption constraints, and verification protocols.
+2. **Strict Database Lock Protection:** NEVER run `sqlite3` directly against `./data/synapse.db` from the host while the Docker container is active. Use `bun run db:check` or `bun run db:backup` via the container API.
+3. **Always Run Idempotent Tests:** Validate any changes with `bun test && bun x tsc --noEmit`.
 
 ---
 
