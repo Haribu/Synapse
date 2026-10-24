@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-10-24
+
+### Added
+- **Interactive Git Commit & Project Links:** Linked the commit badge in `GuideModal.tsx` and `FeedSidebar.tsx` directly to the corresponding GitHub commit page, and added a direct link to the GitHub project repository in the Guide Modal footer.
+- **Enterprise Cloudflare Zero Trust Documentation:** Added comprehensive deployment architecture, dual-layer validation mechanics, mobile PWA cookie preservation (`crossOrigin="use-credentials"`), AI Service Token usage, and troubleshooting matrix in `deploy/cloudflare/CLOUDFLARE_ZERO_TRUST.md` and `API.md`.
+
+### Fixed
+- **In-Body Article Figures & Charts Visibility:** Scoped `.reader-content.hide-hero-images` in `globals.css` strictly to direct-child lead elements (`> img:first-child`, `> figure:first-child`, `> div:first-child > figure`) and hero classes, preventing indiscriminate suppression of Substack and CMS embedded `<figure>` and `<picture>` charts.
+- **Header Image Preference Default:** Adjusted `DEFAULT_A11Y_SETTINGS.hideHeaderImages` default to `false` in `accessibility.ts` so article figures and diagrams render by default without accidental hiding.
+- **Cross-Origin Referrer Protection:** Injected `<meta name="referrer" content="no-referrer">` into the document `<head>` in `layout.tsx`, preventing third-party CDNs and media hosts from blocking embedded images based on custom domain referrers.
+
 ## [1.0.1] - 2026-10-23
 
 ### Fixed

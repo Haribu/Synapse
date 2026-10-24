@@ -122,17 +122,19 @@ body {
 }
 
 /* User preference: suppress top hero / blog header images */
-.reader-content.hide-hero-images > img:first-of-type,
-.reader-content.hide-hero-images > p:first-of-type img,
-.reader-content.hide-hero-images > div:first-of-type img,
-.reader-content.hide-hero-images > figure:first-of-type,
-.reader-content.hide-hero-images figure:first-of-type img,
-.reader-content.hide-hero-images picture:first-of-type img,
+/* Hide only the top hero banner/image at the beginning of article, never embedded charts or content figures */
+.reader-content.hide-hero-images > img:first-child,
+.reader-content.hide-hero-images > figure:first-child,
+.reader-content.hide-hero-images > div:first-child > figure,
+.reader-content.hide-hero-images > div:first-child > picture,
+.reader-content.hide-hero-images > div:first-child > img,
+.reader-content.hide-hero-images > p:first-child > img:only-child,
+.reader-content.hide-hero-images > p:first-child > a:only-child > img,
 .reader-content.hide-hero-images .hero-image,
 .reader-content.hide-hero-images .featured-image,
 .reader-content.hide-hero-images .post-thumbnail,
 .reader-content.hide-hero-images .wp-post-image,
-.reader-content.hide-hero-images .wp-block-image:first-of-type {
+.reader-content.hide-hero-images .wp-block-image:first-child {
   display: none !important;
 }
 

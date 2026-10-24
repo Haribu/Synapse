@@ -1,7 +1,7 @@
 # Synapse — Private, AI-Native RSS++ Reader & Knowledge Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version: 1.0.1](https://img.shields.io/badge/Version-1.0.1-emerald.svg)](./package.json)
+[![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-emerald.svg)](./package.json)
 [![CI](https://github.com/Haribu/synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Haribu/synapse/actions)
 [![Container](https://img.shields.io/badge/GHCR-ghcr.io%2Fharibu%2Fsynapse-blue)](https://github.com/Haribu/synapse/pkgs/container/synapse)
 [![MCP](https://img.shields.io/badge/MCP-Native_Server-8A2BE2)](./scripts/mcp-server.ts)

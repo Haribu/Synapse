@@ -18,8 +18,9 @@ Every action in the Synapse interface is backed by decoupled REST endpoints powe
 
 ### Authentication Methods
 
-- **Local Loopback (`AUTH_MODE=none`):** By default, requests originating from `localhost` or local subnets (`127.0.0.1`, `192.168.x.x`, `10.x.x.x`) require zero authentication.
-- **Pre-Shared Bearer Key (`SYNAPSE_API_KEY`):** For remote agents, external scripts, or deployments behind Cloudflare Access / Reverse Proxies, set `SYNAPSE_API_KEY` in your environment and pass it in the `Authorization` header:
+- **Local Loopback (`AUTH_MODE=none`):** By default, requests originating from `localhost` or local subnets (`127.0.0.1`, `192.168.x.x`, `10.x.x.x`) without external proxy headers require zero authentication.
+- **Cloudflare Zero Trust (`AUTH_MODE=cloudflare`):** In production behind Cloudflare Tunnels, `src/middleware.ts` cryptographically inspects `Cf-Access-Authenticated-User-Email` against `ALLOWED_EMAILS`. See [CLOUDFLARE_ZERO_TRUST.md](./deploy/cloudflare/CLOUDFLARE_ZERO_TRUST.md) for architecture and setup.
+- **Pre-Shared Bearer Key (`SYNAPSE_API_KEY`):** For remote AI agents, external scripts, or MCP daemons connecting over tunnels or reverse proxies, set `SYNAPSE_API_KEY` in your environment and pass it via:
 
 ```bash
 Authorization: Bearer <SYNAPSE_API_KEY>

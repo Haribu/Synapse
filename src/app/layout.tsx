@@ -46,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="apple-mobile-web-app-title" content="Synapse" />
         <meta name="theme-color" content="#0B0D12" />
+        <meta name="referrer" content="no-referrer" />
         <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
       </head>
       <body className="h-full flex overflow-hidden bg-[var(--background)] text-[var(--foreground)] antialiased selection:bg-blue-600 selection:text-white">

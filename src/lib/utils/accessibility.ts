@@ -19,7 +19,7 @@ export const DEFAULT_A11Y_SETTINGS: AccessibilitySettings = {
   letterSpacing: "normal",
   columnWidth: "normal",
   globalDyslexic: false,
-  hideHeaderImages: true,
+  hideHeaderImages: false,
   hideSponsored: false,
   hideRoundups: false,
   hideVendors: false,

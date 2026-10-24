@@ -698,13 +698,16 @@ export function FeedSidebar({
           <span className="font-semibold text-slate-700 dark:text-slate-300">
             Synapse <span className="text-blue-600 dark:text-blue-400">v{APP_VERSION}</span>
           </span>
-          <span
-            className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400 bg-slate-200/80 dark:bg-slate-800/80 px-1.5 py-0.5 rounded font-mono"
-            title="Current Git Commit"
+          <a
+            href={`${process.env.NEXT_PUBLIC_GITHUB_REPO_URL || "https://github.com/Haribu/synapse"}/commit/${GIT_COMMIT}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400 bg-slate-200/80 dark:bg-slate-800/80 hover:bg-slate-300/80 dark:hover:bg-slate-700/80 px-1.5 py-0.5 rounded font-mono transition-colors"
+            title="View Current Git Commit on GitHub"
           >
             <GitCommit className="w-3 h-3 text-slate-400 dark:text-slate-500" />
             {GIT_COMMIT}
-          </span>
+          </a>
         </div>
         <div className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
           <a

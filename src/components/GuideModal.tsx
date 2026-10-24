@@ -15,6 +15,8 @@ import {
   Layers,
   Bot,
   Terminal,
+  GitCommit,
+  Github,
 } from "lucide-react";
 import { APP_VERSION, GIT_COMMIT } from "@/lib/version";
 
@@ -233,13 +235,36 @@ export function GuideModal({ isOpen, onClose }: GuideModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-center justify-between">
-          <div className="text-[11px] text-slate-400 font-mono">
-            Synapse v{APP_VERSION} (#{GIT_COMMIT})
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              Synapse v{APP_VERSION}
+            </span>
+            <span>•</span>
+            <a
+              href={`${process.env.NEXT_PUBLIC_GITHUB_REPO_URL || "https://github.com/Haribu/synapse"}/commit/${GIT_COMMIT}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-750 px-1.5 py-0.5 rounded transition-colors"
+              title="View Commit on GitHub"
+            >
+              <GitCommit className="w-3 h-3 text-slate-400" />
+              <span>#{GIT_COMMIT}</span>
+            </a>
+            <span>•</span>
+            <a
+              href={process.env.NEXT_PUBLIC_GITHUB_REPO_URL || "https://github.com/Haribu/synapse"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            >
+              <Github className="w-3 h-3 text-slate-500" />
+              <span className="underline-offset-2 hover:underline">GitHub Project</span>
+            </a>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
+            className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all"
           >
             Got it
           </button>
