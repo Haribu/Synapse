@@ -30,10 +30,18 @@ export function ReaderLinkMenu({
     typeof window !== "undefined" ? Math.min(window.innerWidth - 270, linkMenu.x) : linkMenu.x;
 
   return (
-    <div
-      className="fixed z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-1.5 w-64 animate-in fade-in zoom-in-95"
-      style={{ top: topPos, left: leftPos }}
-    >
+    <>
+      {/* Invisible backdrop to dismiss menu on tap/click outside */}
+      <div
+        className="fixed inset-0 z-40 bg-transparent"
+        onClick={onClose}
+        onTouchStart={onClose}
+        aria-hidden="true"
+      />
+      <div
+        className="fixed z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-1.5 w-64 animate-in fade-in zoom-in-95"
+        style={{ top: topPos, left: leftPos }}
+      >
       <div className="px-2.5 py-1.5 text-[10px] font-mono text-slate-400 dark:text-slate-400 truncate border-b border-slate-100 dark:border-slate-800 mb-1">
         {linkMenu.url}
       </div>
@@ -74,5 +82,6 @@ export function ReaderLinkMenu({
         Cancel
       </button>
     </div>
+  </>
   );
 }

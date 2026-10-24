@@ -91,10 +91,11 @@ describe("cleanArticleHtml - Cross-Site Scripting (XSS) & Active Content Sanitiz
     expect(cleaned).toContain("<p>Content</p>");
   });
 
-  it("preserves legitimate YouTube embed iframes", () => {
+  it("preserves legitimate YouTube embed iframes with strict referrerpolicy", () => {
     const input = `<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315"></iframe>`;
     const cleaned = cleanArticleHtml(input);
 
     expect(cleaned).toContain('src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
+    expect(cleaned).toContain('referrerpolicy="strict-origin-when-cross-origin"');
   });
 });

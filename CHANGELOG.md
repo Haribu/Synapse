@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.2] - 2026-10-24
+
+### Fixed
+- **Touch Navigation & Quick "Save to Research" Interruption:** Added `touchmove` drag detection with an 8px movement threshold to cancel long-press timers immediately during touch scrolling, increased deliberate long-press delay to 750ms, ignored clicks/touches on `<img>` elements, auto-dismissed the link menu on container scrolling, and added a full-screen tap-outside backdrop overlay to `ReaderLinkMenu.tsx`.
+- **YouTube Embed Player Error 153:** Resolved cross-origin iframe rejection by upgrading global document referrer policy from `no-referrer` to `strict-origin-when-cross-origin` in `layout.tsx`, explicitly specifying `referrerPolicy="strict-origin-when-cross-origin"` on YouTube embed iframes in `ReaderView.tsx`, and enforcing the policy on sanitized article HTML in `clean-article.ts`.
+
 ## [1.1.1] - 2026-10-24
 
 ### Fixed

@@ -665,6 +665,10 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     .replace(
       /<iframe(?![^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)[^>]*>[\s\S]*?<\/iframe>/gis,
       ""
+    )
+    .replace(
+      /<iframe(?=[^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)(?![^>]*referrerpolicy)[^>]*>/gi,
+      '$& referrerpolicy="strict-origin-when-cross-origin"'
     );
 
   // 3b. XSS Defense: Strip all inline DOM event handlers (e.g. onerror, onload, onclick, onmouseover)

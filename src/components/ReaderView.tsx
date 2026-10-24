@@ -228,51 +228,98 @@ export function ReaderView({
     if (!el) return;
 
     let touchTimer: NodeJS.Timeout | null = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    const cancelTouch = () => {
+      if (touchTimer) {
+        clearTimeout(touchTimer);
+        touchTimer = null;
+      }
+    };
 
     const handleContextMenu = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest("a");
-      if (target && target.href) {
+      const targetElement = e.target as HTMLElement;
+      // Never trigger link menu on images (users tap to zoom/lightbox or right-click to copy image)
+      if (targetElement.closest("img")) return;
+
+      const anchor = targetElement.closest("a");
+      if (anchor && anchor.href && /^https?:\/\//i.test(anchor.href)) {
         e.preventDefault();
         setLinkMenu({
           visible: true,
           x: e.clientX,
           y: e.clientY,
-          url: target.href,
-          text: target.innerText || target.href,
+          url: anchor.href,
+          text: anchor.innerText?.trim() || anchor.href,
         });
       }
     };
 
     const handleTouchStart = (e: TouchEvent) => {
-      const target = (e.target as HTMLElement).closest("a");
-      if (target && target.href && e.touches[0]) {
+      cancelTouch();
+      const targetElement = e.target as HTMLElement;
+      // Never trigger link menu on images
+      if (targetElement.closest("img")) return;
+
+      const anchor = targetElement.closest("a");
+      if (anchor && anchor.href && /^https?:\/\//i.test(anchor.href) && e.touches[0]) {
         const touch = e.touches[0];
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+
+        // Intentional long-press: 750ms delay so casual scrolling / reading pauses never trigger the menu
         touchTimer = setTimeout(() => {
           setLinkMenu({
             visible: true,
             x: touch.clientX,
             y: touch.clientY,
-            url: target.href,
-            text: target.innerText || target.href,
+            url: anchor.href,
+            text: anchor.innerText?.trim() || anchor.href,
           });
-        }, 500); // 500ms long-press
+          touchTimer = null;
+        }, 750);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!touchTimer || !e.touches[0]) return;
+      const touch = e.touches[0];
+      const moveX = Math.abs(touch.clientX - touchStartX);
+      const moveY = Math.abs(touch.clientY - touchStartY);
+
+      // If finger moves more than 8px, it is a scroll gesture — cancel immediately
+      if (moveX > 8 || moveY > 8) {
+        cancelTouch();
       }
     };
 
     const handleTouchEnd = () => {
-      if (touchTimer) clearTimeout(touchTimer);
+      cancelTouch();
+    };
+
+    const handleScroll = () => {
+      cancelTouch();
+      setLinkMenu(null);
     };
 
     el.addEventListener("contextmenu", handleContextMenu);
     el.addEventListener("touchstart", handleTouchStart, { passive: true });
+    el.addEventListener("touchmove", handleTouchMove, { passive: true });
     el.addEventListener("touchend", handleTouchEnd);
     el.addEventListener("touchcancel", handleTouchEnd);
 
+    const scrollContainer = scrollContainerRef.current;
+    scrollContainer?.addEventListener("scroll", handleScroll, { passive: true });
+
     return () => {
+      cancelTouch();
       el.removeEventListener("contextmenu", handleContextMenu);
       el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchmove", handleTouchMove);
       el.removeEventListener("touchend", handleTouchEnd);
       el.removeEventListener("touchcancel", handleTouchEnd);
+      scrollContainer?.removeEventListener("scroll", handleScroll);
     };
   }, [item]);
 
@@ -923,6 +970,7 @@ export function ReaderView({
                   className="w-full h-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
                 />
               </div>
             );
