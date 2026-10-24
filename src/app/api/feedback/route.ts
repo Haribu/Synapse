@@ -80,6 +80,39 @@ export async function POST(req: Request) {
   }
 }
 
+function updateObsidianFeedbackLog(comment: string, newStatus: string, notes?: string | null) {
+  try {
+    const vaultRoot = getVaultPath();
+    if (!vaultRoot) return;
+    const feedbackFilePath = path.join(vaultRoot, "01 - Inbox/Synapse/Feedback-Log.md");
+    if (!fs.existsSync(feedbackFilePath)) return;
+
+    const fileContent = fs.readFileSync(feedbackFilePath, "utf8");
+    const sections = fileContent.split(/\n(?=### )/);
+    const key = comment.slice(0, 45).trim().toLowerCase();
+
+    let modified = false;
+    const newSections = sections.map((sec) => {
+      if (!sec.startsWith("### ")) return sec;
+      if (sec.toLowerCase().includes(key)) {
+        modified = true;
+        const statusBadge =
+          newStatus === "implemented" || newStatus === "resolved"
+            ? `✅ **Implemented**${notes ? ` — *${notes}*` : ""}`
+            : `⏳ **Open**`;
+        return sec.replace(/\*Status:\*\s*[^\n]+/i, `*Status:* ${statusBadge}`);
+      }
+      return sec;
+    });
+
+    if (modified) {
+      fs.writeFileSync(feedbackFilePath, newSections.join("\n"), "utf8");
+    }
+  } catch (err) {
+    console.warn("[Feedback] Could not sync status to Obsidian:", err);
+  }
+}
+
 export async function PATCH(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -87,6 +120,11 @@ export async function PATCH(req: Request) {
 
     if (!id) {
       return NextResponse.json({ error: "Feedback ID is required" }, { status: 400 });
+    }
+
+    const existing = db.select().from(feedback).where(eq(feedback.id, id)).get();
+    if (!existing) {
+      return NextResponse.json({ error: "Feedback item not found" }, { status: 404 });
     }
 
     const updatePayload: Record<string, any> = {};
@@ -97,6 +135,15 @@ export async function PATCH(req: Request) {
     }
 
     db.update(feedback).set(updatePayload).where(eq(feedback.id, id)).run();
+
+    // Mirror status update to mounted Obsidian Feedback-Log.md
+    if (status) {
+      updateObsidianFeedbackLog(
+        existing.comment,
+        status,
+        resolutionNotes !== undefined ? resolutionNotes : existing.resolutionNotes
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -146,7 +193,7 @@ export async function GET() {
                 recording = true;
               }
             }
-            const commentKey = commentLines.join(" ").slice(0, 50).trim().toLowerCase();
+            const commentKey = commentLines.join(" ").slice(0, 45).trim().toLowerCase();
             if (commentKey) {
               statusMap.set(commentKey, {
                 status: isImplemented ? "implemented" : isOpen ? "open" : "open",
@@ -157,17 +204,23 @@ export async function GET() {
 
           const dbItems = db.select().from(feedback).all();
           for (const item of dbItems) {
-            const key = item.comment.slice(0, 50).trim().toLowerCase();
+            const key = item.comment.slice(0, 45).trim().toLowerCase();
             const match = statusMap.get(key);
-            if (match && match.status !== item.status) {
+            
+            // Only update SQLite if Obsidian has newly marked it implemented
+            if (match && match.status === "implemented" && item.status !== "implemented") {
               db.update(feedback)
                 .set({
-                  status: match.status,
+                  status: "implemented",
                   resolutionNotes: match.notes || item.resolutionNotes,
-                  resolvedAt: match.status === "implemented" ? item.resolvedAt || new Date() : null,
+                  resolvedAt: item.resolvedAt || new Date(),
                 })
                 .where(eq(feedback.id, item.id))
                 .run();
+            } 
+            // If SQLite is already implemented, but Obsidian still shows Open, update Obsidian (never downgrade SQLite)
+            else if (item.status === "implemented" && match && match.status !== "implemented") {
+              updateObsidianFeedbackLog(item.comment, "implemented", item.resolutionNotes);
             }
           }
         }

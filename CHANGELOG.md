@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.1] - 2026-10-24
+
+### Fixed
+- **Foreign Affairs Stub Detection & Escalation:** Added magazine issue promo teasers (`"new issue out"`, `"more by "`, and short articles dominated by author credentials) to `isStubOrBlocked` in `readability-extractor.ts`, triggering fallback cascades (Jina Reader and Wayback Machine) so full article body text is extracted.
+- **Obsidian Feedback Sync Reversion Guard:** Fixed bidirectional status sync in `src/app/api/feedback/route.ts` so `PATCH` updates both SQLite and the mounted Obsidian `Feedback-Log.md`, and `GET` never reverts `implemented` items back to `open`.
+- **Commit Hash Link Accuracy:** Pointed the `GIT_COMMIT` fallback in `src/lib/version.ts` to the v1.1.0 release commit (`6777148`).
+
 ## [1.1.0] - 2026-10-24
 
 ### Added

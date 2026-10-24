@@ -186,8 +186,23 @@ export function isStubOrBlocked(
     "make ars better with an arspro subscription",
     "stay informed on the world's most pressing challenges",
     "this one is on us",
+    "new issue out",
+    "more by ",
+    "read now",
   ];
   if (softStubMarkers.some((m) => c.includes(m) || t.includes(m))) {
+    return true;
+  }
+
+  // If text length < 1000 and contains magazine issue teaser or author bios without substantive body
+  if (
+    textLength < 1000 &&
+    (c.includes("new issue out") ||
+      c.includes("global fellow") ||
+      c.includes("senior fellow") ||
+      c.includes("carnegie russia") ||
+      c.includes("columbia university"))
+  ) {
     return true;
   }
 
