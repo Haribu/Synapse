@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.4] - 2026-10-26
+
+### Fixed
+- **Catastrophic Regex Backtracking (ReDoS) Resolution:** Fixed nested quantifier pattern in Lowy Institute byline regex in `clean-article.ts` that caused the Node.js event loop to freeze at 100% CPU during background feed ingestion, failing health checks and causing mobile timeouts.
+
 ## [1.1.3] - 2026-10-26
 
 ### Fixed

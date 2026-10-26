@@ -217,7 +217,7 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     ""
   );
   md = md.replace(
-    /(?:^|\n)\s*(?:\[?[A-Za-z\s\.'-]+\]?(?:\(https?:\/\/[^\)]+\))?\s*(?:,|and|&)?\s*)*\n*\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n+(?:Listen\s*(?:Copy link)?|Copy link))?\s*\n*/gi,
+    /(?:^|\n)[^\n]{1,80}\n+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n+(?:Listen\s*(?:Copy link)?|Copy link))?\s*(?:\n|$)/gi,
     "\n"
   );
   md = md.replace(/(?:^|\n)\s*(?:Listen\s+Copy link|Listen|Copy link)\s*(?:\n|$)/gi, "\n");
