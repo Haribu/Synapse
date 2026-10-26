@@ -99,3 +99,66 @@ describe("cleanArticleHtml - Cross-Site Scripting (XSS) & Active Content Sanitiz
     expect(cleaned).toContain('referrerpolicy="strict-origin-when-cross-origin"');
   });
 });
+
+describe("cleanArticleMarkdown & cleanArticleHtml - Lowy Institute / The Interpreter (Bug 25/10/2026)", () => {
+  it("strips publication logos and wordmarks from Lowy Institute / The Interpreter markdown", () => {
+    const input = `# Pacific women are already doing the work. COP31 must back them
+
+![The Interpreter](https://www.lowyinstitute.org/themes/custom/lowy_theme/images/the-interpreter-logo.svg)
+
+Image 4: The Interpreter
+
+Jane Doe
+25 October 2026 4 min read
+Listen Copy link
+
+Pacific women are on the front lines of climate adaptation across the region.`;
+
+    const cleaned = cleanArticleMarkdown(input, "Pacific women are already doing the work. COP31 must back them");
+
+    expect(cleaned).not.toContain("![The Interpreter]");
+    expect(cleaned).not.toContain("Image 4: The Interpreter");
+    expect(cleaned).not.toContain("Listen Copy link");
+    expect(cleaned).not.toContain("4 min read");
+    expect(cleaned).toContain("Pacific women are on the front lines");
+  });
+
+  it("deduplicates repeated lead paragraphs and adjacent duplicate content in markdown", () => {
+    const input = `Pacific women are on the front lines of climate adaptation across the region.
+
+Pacific women are on the front lines of climate adaptation across the region.
+
+They manage water security and build community resilience.`;
+
+    const cleaned = cleanArticleMarkdown(input);
+
+    const matches = cleaned.match(/Pacific women are on the front lines/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBe(1);
+    expect(cleaned).toContain("They manage water security and build community resilience.");
+  });
+
+  it("strips publication logos, audio toolbars, and duplicate paragraphs in HTML", () => {
+    const input = `<div>
+      <img src="https://www.lowyinstitute.org/sites/default/files/the-interpreter-logo.png" alt="The Interpreter" />
+      <p>Image: The Interpreter</p>
+      <p><a href="https://www.lowyinstitute.org/people/jane-doe">Jane Doe</a></p>
+      <p>25 October 2026 4 min read</p>
+      <p>Listen Copy link</p>
+      <p>Pacific women are on the front lines of climate adaptation across the region.</p>
+      <p>Pacific women are on the front lines of climate adaptation across the region.</p>
+      <p>Second paragraph with unique research findings.</p>
+    </div>`;
+
+    const cleaned = cleanArticleHtml(input);
+
+    expect(cleaned).not.toContain("the-interpreter-logo");
+    expect(cleaned).not.toContain("Image: The Interpreter");
+    expect(cleaned).not.toContain("Listen Copy link");
+    expect(cleaned).not.toContain("4 min read");
+    const matches = cleaned.match(/Pacific women are on the front lines/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBe(1);
+    expect(cleaned).toContain("Second paragraph with unique research findings.");
+  });
+});

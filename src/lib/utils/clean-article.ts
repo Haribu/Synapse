@@ -207,7 +207,7 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     "\n"
   );
 
-  // 4g. Strip Lowy Institute / The Interpreter newsletter subscriptions, topic tree, and author/date/read-time toolbar
+  // 4g. Strip Lowy Institute / The Interpreter newsletter subscriptions, topic tree, publication logos, and author/date/read-time toolbar
   md = md.replace(
     /(?:^|\n)(?:wsletters|Newsletters)[\s\S]*?(?:Subscribe to The Informer|The Informer)[\s\S]*?(?:Support us|\d+\s*min read\b)[\s\S]*?(?=\n\n|\n[#A-Z]|$)/gi,
     ""
@@ -217,14 +217,19 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     ""
   );
   md = md.replace(
-    /(?:^|\n)[A-Za-z\s\.-]+\s*\n+\d{1,2}\s+[A-Z][a-z]+\s+\d{4}\s+\d+\s+min read\s*(?:\n+Listen\s*(?:Copy link)?)?\s*\n*/gi,
+    /(?:^|\n)\s*(?:\[?[A-Za-z\s\.'-]+\]?(?:\(https?:\/\/[^\)]+\))?\s*(?:,|and|&)?\s*)*\n*\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n+(?:Listen\s*(?:Copy link)?|Copy link))?\s*\n*/gi,
     "\n"
   );
-  md = md.replace(/(?:^|\n)Listen\s+Copy link\s*(?:\n|$)/gi, "\n");
+  md = md.replace(/(?:^|\n)\s*(?:Listen\s+Copy link|Listen|Copy link)\s*(?:\n|$)/gi, "\n");
   md = md.replace(
-    /!\[Lowy Institute\]\(https?:\/\/[^\)]*lowyinstitute\.org\/[^\)]*wordmark[^\)]*\)/gi,
-    ""
+    /(?:^|\n)\s*!\[(?:The Interpreter|Lowy Institute|Interpreter)[^\]]*\]\([^)]+\)\s*(?:\n|$)/gi,
+    "\n"
   );
+  md = md.replace(
+    /(?:^|\n)\s*!\[[^\]]*\]\(https?:\/\/[^\)]*(?:lowyinstitute\.org|the-interpreter)[^\)]*(?:logo|wordmark|masthead|brand)[^\)]*\)\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(/(?:^|\n)\s*Image(?:\s*\d+)?:\s*(?:The Interpreter|Lowy Institute)\s*(?:\n|$)/gi, "\n");
   md = md.replace(
     /(?:^|\n)#{1,6}\s*Newsletters\s*\n+Subscribe to The Informer[\s\S]*?(?:You may unsubscribe[^\n]*\.?|\n\n)/gi,
     "\n"
@@ -341,6 +346,50 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
       }
     }
   }
+
+  // 5b. Deduplicate repeated lead paragraphs, standfirst summaries, and adjacent identical paragraphs
+  const mdParagraphs = md.split(/\n{2,}/);
+  const dedupedMdParagraphs: string[] = [];
+  for (let i = 0; i < mdParagraphs.length; i++) {
+    const current = mdParagraphs[i].trim();
+    if (!current) continue;
+    if (dedupedMdParagraphs.length > 0) {
+      const prev = dedupedMdParagraphs[dedupedMdParagraphs.length - 1].trim();
+      const cleanCur = current.toLowerCase().replace(/[^\w]/g, "");
+      const cleanPrev = prev.toLowerCase().replace(/[^\w]/g, "");
+      // Skip exact duplicate or near duplicate (> 35 chars and > 90% character length equality + inclusion)
+      if (
+        cleanCur === cleanPrev ||
+        (cleanCur.length > 35 &&
+          cleanPrev.length > 35 &&
+          Math.abs(cleanCur.length - cleanPrev.length) < 15 &&
+          (cleanCur.includes(cleanPrev) || cleanPrev.includes(cleanCur)))
+      ) {
+        continue;
+      }
+      // If current paragraph repeats lead summary blurb within first 3 paragraphs
+      if (i <= 3 && dedupedMdParagraphs.length > 0) {
+        const lead = dedupedMdParagraphs[0].trim().toLowerCase().replace(/[^\w]/g, "");
+        if (
+          lead.length > 35 &&
+          (cleanCur === lead ||
+            (Math.abs(cleanCur.length - lead.length) < 15 &&
+              (cleanCur.includes(lead) || lead.includes(cleanCur))))
+        ) {
+          continue;
+        }
+      }
+      // If current paragraph is a markdown pullquote (> quote) that repeats the previous paragraph
+      if (
+        current.startsWith(">") &&
+        current.replace(/^>\s*/, "").trim().toLowerCase().replace(/[^\w]/g, "") === cleanPrev
+      ) {
+        continue;
+      }
+    }
+    dedupedMdParagraphs.push(mdParagraphs[i]);
+  }
+  md = dedupedMdParagraphs.join("\n\n");
 
   // 6. Strip social share widgets & Google Preferred source prompts
   md = md.replace(
@@ -794,10 +843,14 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(
-    /<p>\s*[A-Za-z\s\.-]+\s*<\/p>\s*<p>\s*\d{1,2}\s+[A-Z][a-z]+\s+\d{4}\s+\d+\s+min read\s*<\/p>(?:\s*<p>\s*(?:Listen\s+Copy link|Listen|Copy link)\s*<\/p>)?/gi,
+    /<p>\s*(?:<a[^>]*>)?[A-Za-z\s\.-]+(?:<\/a>)?\s*<\/p>\s*<p>\s*\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*<\/p>(?:\s*<p>\s*(?:Listen\s+Copy link|Listen|Copy link)\s*<\/p>)?/gi,
     ""
   );
-  html = html.replace(/<p>\s*Listen\s+Copy link\s*<\/p>/gi, "");
+  html = html.replace(/<p>\s*(?:Listen\s+Copy link|Listen|Copy link)\s*<\/p>/gi, "");
+  html = html.replace(
+    /<div[^>]*(?:article__audio|field--name-field-audio|audio-player)[^>]*>[\s\S]*?<\/div>/gi,
+    ""
+  );
 
   // 9c-5. Strip "(Opens in new window)" warnings inside and outside links while preserving anchors and hyperlinks
   html = html.replace(
@@ -933,9 +986,17 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
 
-  // 9i-6. Strip Lowy Institute wordmark SVG & newsletter boxes
+  // 9i-6. Strip Lowy Institute / The Interpreter publication logos, wordmark SVGs, and newsletter boxes
   html = html.replace(
-    /<img[^>]*src=["'][^"']*lowyinstitute\.org\/[^\)]*wordmark[^"']*["'][^>]*>/gi,
+    /<img[^>]+(?:alt=["'](?:The Interpreter|Lowy Institute|Interpreter)[^"']*["']|src=["'][^"']*(?:the-interpreter|lowyinstitute)[^"']*(?:logo|wordmark|brand|masthead)[^"']*["'])[^>]*>/gi,
+    ""
+  );
+  html = html.replace(
+    /<div[^>]*(?:interpreter-logo|publication-logo|site-logo|brand-logo)[^>]*>[\s\S]*?<\/div>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*Image(?:\s*\d+)?:\s*(?:The Interpreter|Lowy Institute)\s*<\/p>/gi,
     ""
   );
   html = html.replace(
@@ -1080,6 +1141,28 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
       }
     }
   }
+
+  // 11b. Deduplicate consecutive identical paragraphs and redundant pullquotes
+  html = html.replace(/<p[^>]*>([\s\S]*?)<\/p>\s*<p[^>]*>([\s\S]*?)<\/p>/gi, (match, p1, p2) => {
+    const text1 = p1.replace(/<[^>]+>/g, "").trim().toLowerCase().replace(/[^\w]/g, "");
+    const text2 = p2.replace(/<[^>]+>/g, "").trim().toLowerCase().replace(/[^\w]/g, "");
+    if (
+      text1.length > 30 &&
+      (text1 === text2 ||
+        (Math.abs(text1.length - text2.length) < 15 && (text1.includes(text2) || text2.includes(text1))))
+    ) {
+      return `<p>${p1}</p>`;
+    }
+    return match;
+  });
+  html = html.replace(/<p[^>]*>([\s\S]*?)<\/p>\s*<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (match, p, bq) => {
+    const pText = p.replace(/<[^>]+>/g, "").trim().toLowerCase().replace(/[^\w]/g, "");
+    const bqText = bq.replace(/<[^>]+>/g, "").trim().toLowerCase().replace(/[^\w]/g, "");
+    if (pText.length > 30 && (pText === bqText || pText.includes(bqText) || bqText.includes(pText))) {
+      return `<p>${p}</p>`;
+    }
+    return match;
+  });
 
   // 12. Strip tail boilerplate (What to read next / Related stories)
   const tailMatch = html.match(

@@ -504,11 +504,13 @@ export function ItemList({
   ]);
 
   const clusteredItems = React.useMemo(() => {
-    if (a11ySettings?.disableGrouping) {
+    // Saved queues (Research Inbox, Read Later, Watch Later, Work) represent deliberately curated user items
+    // and must never be grouped or hidden under primary article clusters.
+    if (a11ySettings?.disableGrouping || isSavedView) {
       return displayedItems.map((item) => ({ primary: item, relatedStories: [] }));
     }
     return clusterRelatedArticles(displayedItems);
-  }, [displayedItems, a11ySettings?.disableGrouping]);
+  }, [displayedItems, a11ySettings?.disableGrouping, isSavedView]);
 
   useEffect(() => {
     if (onDisplayedItemsChange) {

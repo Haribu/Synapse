@@ -329,6 +329,121 @@ const DOMAIN_STOP_WORDS = new Set([
   "gathering",
   "episode",
   "season",
+  // Common tech, software, AI, policy, business, and conversational terms that cause false clusters
+  "ai",
+  "artificial",
+  "intelligence",
+  "model",
+  "models",
+  "llm",
+  "llms",
+  "gpt",
+  "reasoning",
+  "agent",
+  "agents",
+  "agentic",
+  "guide",
+  "overview",
+  "introduction",
+  "tutorial",
+  "primer",
+  "deep",
+  "dive",
+  "building",
+  "build",
+  "built",
+  "design",
+  "designing",
+  "architecture",
+  "future",
+  "modern",
+  "simple",
+  "software",
+  "engineering",
+  "developer",
+  "developers",
+  "development",
+  "program",
+  "market",
+  "markets",
+  "business",
+  "startups",
+  "startup",
+  "firm",
+  "industry",
+  "team",
+  "teams",
+  "leadership",
+  "management",
+  "culture",
+  "database",
+  "analytics",
+  "metrics",
+  "stats",
+  "benchmark",
+  "benchmarks",
+  "performance",
+  "scaling",
+  "scale",
+  "speed",
+  "fast",
+  "slow",
+  "growth",
+  "security",
+  "privacy",
+  "safety",
+  "trust",
+  "risk",
+  "risks",
+  "policy",
+  "policies",
+  "test",
+  "testing",
+  "eval",
+  "evals",
+  "evaluation",
+  "evaluating",
+  "network",
+  "cloud",
+  "api",
+  "apis",
+  "career",
+  "think",
+  "thinking",
+  "thought",
+  "lessons",
+  "learned",
+  "learnt",
+  "things",
+  "ways",
+  "tips",
+  "tricks",
+  "rules",
+  "problem",
+  "problems",
+  "solution",
+  "solutions",
+  "issue",
+  "issues",
+  "stop",
+  "start",
+  "make",
+  "making",
+  "better",
+  "best",
+  "good",
+  "bad",
+  "real",
+  "true",
+  "false",
+  "national",
+  "international",
+  "country",
+  "countries",
+  "women",
+  "people",
+  "work",
+  "working",
 ]);
 
 /**
@@ -345,6 +460,18 @@ export function parseTimestampMs(val: any): number {
   }
   const d = new Date(val).getTime();
   return isNaN(d) ? 0 : d;
+}
+
+function stemWord(w: string): string {
+  if (w.length < 5) return w;
+  if (w.endsWith("ies") && w.length >= 6) return w.slice(0, -3) + "y";
+  if (w.endsWith("ing") && w.length >= 6) return w.slice(0, -3);
+  if (w.endsWith("ed") && w.length >= 5) return w.slice(0, -2);
+  if (w.endsWith("ers") && w.length >= 6) return w.slice(0, -3);
+  if (w.endsWith("er") && w.length >= 5) return w.slice(0, -2);
+  if (w.endsWith("es") && w.length >= 5) return w.slice(0, -2);
+  if (w.endsWith("s") && !w.endsWith("ss") && w.length >= 4) return w.slice(0, -1);
+  return w;
 }
 
 /**
@@ -373,16 +500,18 @@ export function extractArticleFeatures(item: {
     .filter((w: string) => w.length >= 3 && !STOP_WORDS.has(w) && !DOMAIN_STOP_WORDS.has(w));
 
   const titleKeywords = new Set(titleWords);
+  const stemmedTitleKeywords = new Set(titleWords.map(stemWord));
 
   // 3. Lead content tokens for cross-verification
   const contentText = (snippet + " " + content).toLowerCase().replace(/[^a-z0-9\s-]/g, " ");
 
-  const contentTokens = new Set(
-    contentText
-      .split(/\s+/)
-      .map((w: string) => w.trim())
-      .filter((w: string) => w.length >= 4 && !STOP_WORDS.has(w) && !DOMAIN_STOP_WORDS.has(w))
-  );
+  const rawContentTokens = contentText
+    .split(/\s+/)
+    .map((w: string) => w.trim())
+    .filter((w: string) => w.length >= 4 && !STOP_WORDS.has(w) && !DOMAIN_STOP_WORDS.has(w));
+
+  const contentTokens = new Set(rawContentTokens);
+  const stemmedContentTokens = new Set(rawContentTokens.map(stemWord));
 
   // Check if title is a periodic digest (e.g. "Wednesday assorted links", "Security roundup #42")
   const isDigest =
@@ -393,7 +522,9 @@ export function extractArticleFeatures(item: {
   return {
     cves,
     titleKeywords,
+    stemmedTitleKeywords,
     contentTokens,
+    stemmedContentTokens,
     isDigest,
   };
 }
@@ -412,15 +543,23 @@ export function areArticlesRelated(
     return false;
   }
 
-  // Temporal check: must be published within 72 hours
-  const dateA = parseTimestampMs(itemA.publishedAt);
-  const dateB = parseTimestampMs(itemB.publishedAt);
-  if (dateA > 0 && dateB > 0) {
-    const diffHours = Math.abs(dateA - dateB) / (1000 * 60 * 60);
-    if (diffHours > 72) return false;
+  // Articles from the same feed are distinct posts/issues, never syndication duplicates
+  if (itemA.feedId && itemB.feedId && itemA.feedId === itemB.feedId) {
+    return false;
   }
 
-  // 1. Definite CVE match
+  // Strict temporal check: both articles must have a valid publication/creation timestamp within 48 hours
+  const dateA = parseTimestampMs(itemA.publishedAt || itemA.createdAt);
+  const dateB = parseTimestampMs(itemB.publishedAt || itemB.createdAt);
+  if (!dateA || !dateB) {
+    return false; // Without verifiable timestamps, never cluster (prevents cross-epoch false groupings)
+  }
+  const diffHours = Math.abs(dateA - dateB) / (1000 * 60 * 60);
+  if (diffHours > 48) {
+    return false;
+  }
+
+  // 1. Definite technical identifier match (CVEs)
   if (featA.cves.size > 0 && featB.cves.size > 0) {
     for (const cve of featA.cves) {
       if (featB.cves.has(cve)) {
@@ -429,51 +568,38 @@ export function areArticlesRelated(
     }
   }
 
-  // 2. High-value Title Keyword Overlap
+  // 2. High-value Title Keyword Overlap (using stemmed matching)
   const sharedTitleWords: string[] = [];
   for (const word of featA.titleKeywords) {
-    if (featB.titleKeywords.has(word)) {
+    if (featB.titleKeywords.has(word) || featB.stemmedTitleKeywords.has(stemWord(word))) {
       sharedTitleWords.push(word);
     }
   }
 
-  // If they share at least 2 strong, non-generic title keywords
-  if (sharedTitleWords.length >= 2) {
-    // Cross-verify with full article content
-    let sharedContentWords = 0;
-    for (const word of sharedTitleWords) {
-      if (featA.contentTokens.has(word) && featB.contentTokens.has(word)) {
-        sharedContentWords++;
-      }
-    }
-    // Check general content overlap
-    let sharedGeneralContent = 0;
-    for (const token of featA.contentTokens) {
-      if (featB.contentTokens.has(token)) {
-        sharedGeneralContent++;
-      }
-    }
-
-    if (sharedContentWords >= 2 || sharedGeneralContent >= 4) {
-      return true;
+  // Count shared words that also appear in full article content
+  let sharedContentWords = 0;
+  for (const word of sharedTitleWords) {
+    const stemmed = stemWord(word);
+    if (
+      (featA.contentTokens.has(word) || featA.stemmedContentTokens.has(stemmed)) &&
+      (featB.contentTokens.has(word) || featB.stemmedContentTokens.has(stemmed))
+    ) {
+      sharedContentWords++;
     }
   }
 
-  // 3. Single strong entity keyword + deep content confirmation
-  // e.g. "Tensorlake" or "FortiBleed" or "PoeLLM" in title + 5+ shared rare tokens in lead content
-  if (sharedTitleWords.length === 1) {
-    const key = sharedTitleWords[0];
-    if (key.length >= 6) {
-      let sharedGeneralContent = 0;
-      for (const token of featA.contentTokens) {
-        if (featB.contentTokens.has(token)) {
-          sharedGeneralContent++;
-        }
-      }
-      if (sharedGeneralContent >= 5) {
-        return true;
-      }
+  // Count general content overlap of distinctive non-stop words
+  let sharedGeneralContent = 0;
+  for (const token of featA.stemmedContentTokens) {
+    if (featB.stemmedContentTokens.has(token)) {
+      sharedGeneralContent++;
     }
+  }
+
+  // High-confidence multi-keyword cluster:
+  // Requires at least 2 shared distinctive title keywords, verified in content, with shared content confirmation (>= 3 shared tokens)
+  if (sharedTitleWords.length >= 2 && sharedContentWords >= 2 && sharedGeneralContent >= 3) {
+    return true;
   }
 
   return false;

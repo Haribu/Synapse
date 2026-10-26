@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.3] - 2026-10-26
+
+### Fixed
+- **Curated Queues Story Grouping Exemption:** Completely exempted curated reading queues (`isSavedView`: Research Inbox `reading_list`, Read Later `starred`, Watch Later `watch_later`, and Work `work`) from story clustering in `ItemList.tsx` and `page.tsx`. Hand-curated items remain individually visible without being hidden under primary article clusters.
+- **Story Grouping Clustering Calibration:** Hardened `clustering.ts` to eliminate false-positive groupings:
+  - Disallowed clustering items originating from the same feed (`itemA.feedId === itemB.feedId`).
+  - Enforced a strict 48-hour publication timestamp window (`Math.abs(dateA - dateB) <= 48h`). Articles without verifiable timestamps are never grouped.
+  - Significantly expanded domain stop words (`ai`, `models`, `agents`, `architecture`, `software`, `performance`, `benchmarks`, `security`, `policies`, `testing`, `analytics`, `systems`, etc.).
+  - Replaced overly loose 1-keyword/4-content-word matching with high-confidence thresholds (requiring 3+ shared distinctive title keywords, verified in content, with >= 8 shared distinctive content tokens).
+- **Lowy Institute / The Interpreter Content Cleaning & Deduplication:**
+  - Stripped publication logos, brand headers, and wordmark images across Markdown (`![The Interpreter]`, `Image: The Interpreter`) and HTML in `clean-article.ts`.
+  - Added author byline cleaners supporting linked author cards (`[Author](url)`), multi-author rows, date formats, and audio toolbars (`Listen Copy link`).
+  - Added automated paragraph deduplication in `cleanArticleMarkdown` and `cleanArticleHtml` to remove repeated standfirst lead summaries, adjacent duplicate paragraphs, and redundant pullquotes.
+
 ## [1.1.2] - 2026-10-24
 
 ### Fixed

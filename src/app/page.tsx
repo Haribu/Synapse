@@ -349,7 +349,18 @@ export default function HomePage() {
     };
   }, [refreshFeedsAndBoards, refreshItems]);
 
-  const clusters = useMemo(() => clusterRelatedArticles(items), [items]);
+  const isCuratedView =
+    selectedView === "starred" ||
+    selectedView === "watch_later" ||
+    selectedView === "reading_list" ||
+    selectedView === "work";
+
+  const clusters = useMemo(() => {
+    if (a11ySettings?.disableGrouping || isCuratedView) {
+      return items.map((item) => ({ primary: item, relatedStories: [] }));
+    }
+    return clusterRelatedArticles(items);
+  }, [items, a11ySettings?.disableGrouping, isCuratedView]);
 
   const patchItem = async (idOrIds: string | string[], body: Record<string, any>) => {
     const rawIds = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
