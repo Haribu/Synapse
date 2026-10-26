@@ -16,8 +16,6 @@ deploy
 *.tsbuildinfo
 *.opml
 *.md
-**/*.test.ts
-**/*.test.tsx
 bun.lock
 scripts
 docker-compose*.yml

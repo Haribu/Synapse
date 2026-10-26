@@ -34,8 +34,9 @@ Run the vast majority of operations inside the standard sandbox:
 The following actions should ONLY be executed when explicitly requested for deployment or container operations:
 
 1. **Docker Engine Management:** (`docker compose up -d --build --wait`, `docker logs`, `docker ps`).
-2. **Unified Deployment Verification:** (`bun run verify:deploy`).
-3. **UI Viewport Capture:** (`bun run verify:ui`).
+2. **Containerized Test Execution:** (`docker compose --profile test run --rm tester` or `docker compose --profile test build tester`). Avoids host permission prompt fatigue by running all tests and typechecks inside the isolated `synapse-tester` container.
+3. **Unified Deployment Verification:** (`bun run verify:deploy`).
+4. **UI Viewport Capture:** (`bun run verify:ui`).
 
 ### C. Database Integrity & Anti-Corruption Protocol (STRICT)
 

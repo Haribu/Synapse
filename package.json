@@ -26,6 +26,7 @@
     "build": "next build",
     "start": "next start",
     "test": "bun test",
+    "test:docker": "docker compose --profile test run --rm tester",
     "lint": "tsc --noEmit",
     "format:check": "prettier --check .",
     "format": "prettier --write .",

@@ -1,0 +1,23 @@
+FROM node:22-alpine AS tester
+
+# Install build dependencies for better-sqlite3 native compilation on Alpine
+RUN apk add --no-cache libc6-compat python3 make g++
+
+WORKDIR /app
+
+# Install dependencies via npm where better-sqlite3 compiles cleanly on Node 22
+COPY package.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --prefer-offline --no-audit
+
+# Install bun for fast testing
+RUN npm install -g bun
+
+# Copy application source
+COPY . .
+
+# Static type check
+RUN bun x tsc --noEmit
+
+# Default command runs test suite
+CMD ["bun", "test"]
