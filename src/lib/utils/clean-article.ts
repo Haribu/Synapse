@@ -85,6 +85,13 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     .replace(/^Description:\s*.*$/gim, "")
     .replace(/^Markdown Content:\s*$/gim, "");
 
+  // 1b. Strip leaked inline CSS rule blocks (e.g. WordPress Kadence Blocks .kt-inside-inner-col{...}, .kadence-column*{...}, @media{...})
+  md = md.replace(/@media\s+[^{]{1,200}\{(?:[^{}]*\{[^}]*\})*\s*\}/gi, "");
+  md = md.replace(
+    /\.[a-zA-Z_-][a-zA-Z0-9_\\-]*[\s>+~,:.\[\]="a-zA-Z0-9_\\-]{0,120}\{[a-zA-Z-]+\s*:[^}]{1,500}\}/g,
+    ""
+  );
+
   // 2. Strip tracking pixels, broken blob URLs, and linked blob images
   md = md.replace(
     /\[?!\[.*?\]\((?:blob:[^)]+|https?:\/\/(?:t\.co|analytics\.twitter\.com|bat\.bing\.com|ad\.|doubleclick|google-analytics|stats\.wp\.com|pixel\.).*?)\)\]?(?:\([^)]*\))?/gi,
@@ -107,8 +114,9 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   md = md.replace(/(?:^|\n)\*+(?:Advertisement|Sponsored|Promoted)\*+(?:\n|$)/gi, "");
   md = md.replace(/(?:^|\n)\[?Advertisement\]?\s*\n+/gi, "\n");
 
-  // 2d. Strip ghost/empty link anchors with no visible text: [](https://...)
-  md = md.replace(/\[\s*\]\([^\)]*\)/g, "");
+  // 2d. Strip ghost/empty link anchors with no visible text: [](https://...) (preserve ![](...) empty-alt images!)
+  md = md.replace(/(?<!!)\[\s*\]\([^\)]*\)/g, "");
+  md = md.replace(/(?:^|\n)\s*!\s*(?=\n|$)/g, "\n");
 
   // 2e. Strip social subscriber and follower count chips/badges
   md = md.replace(/\[\s*(?:_\S*_\s*)?\d[\d,]*\s+(?:Subscribers|Followers)[^\]]*\]\([^\)]+\)/gi, "");
@@ -217,19 +225,26 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     ""
   );
   md = md.replace(
-    /(?:^|\n)[^\n]{1,80}\n+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n+(?:Listen\s*(?:Copy link)?|Copy link))?\s*(?:\n|$)/gi,
+    /(?:^|\n)(?:\[[A-Za-z\s\.-]+\]\(https?:\/\/[^\)]*lowyinstitute\.org\/people\/[^\)]*\)|[^\n]{1,80})\s*\n+\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n+(?:Listen\s*(?:Copy link)?|Copy link))?\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*\d{1,2}\s+[A-Za-z]+\s+\d{4}\s*(?:·|\s*\|\s*|\s+)\s*\d+\s*min\s+read\s*(?:\n|$)/gi,
     "\n"
   );
   md = md.replace(/(?:^|\n)\s*(?:Listen\s+Copy link|Listen|Copy link)\s*(?:\n|$)/gi, "\n");
   md = md.replace(
-    /(?:^|\n)\s*!\[(?:The Interpreter|Lowy Institute|Interpreter)[^\]]*\]\([^)]+\)\s*(?:\n|$)/gi,
+    /(?:^|\n)\s*\[?\s*!\[(?:Image\s*\d+:\s*)?(?:The Interpreter|Lowy Institute|Interpreter)[^\]]*\]\([^)]+\)\s*\]?(?:\([^\)]*\))?(?:\s*\|[^\n]*)?\s*(?:\n|$)/gi,
     "\n"
   );
   md = md.replace(
-    /(?:^|\n)\s*!\[[^\]]*\]\(https?:\/\/[^\)]*(?:lowyinstitute\.org|the-interpreter)[^\)]*(?:logo|wordmark|masthead|brand)[^\)]*\)\s*(?:\n|$)/gi,
+    /(?:^|\n)\s*\[?\s*!\[[^\]]*\]\(https?:\/\/[^\)]*(?:269x44\.svg|31-bligh\.svg|(?:lowyinstitute\.org|the-interpreter)[^\)]*(?:logo|wordmark|masthead|brand)|cdn\.sanity\.io\/images\/5dcouzig\/production\/[^\)]*\.svg)[^\)]*\)\s*\]?(?:\([^\)]*\))?(?:\s*\|[^\n]*)?\s*(?:\n|$)/gi,
     "\n"
   );
-  md = md.replace(/(?:^|\n)\s*Image(?:\s*\d+)?:\s*(?:The Interpreter|Lowy Institute)\s*(?:\n|$)/gi, "\n");
+  md = md.replace(
+    /(?:^|\n)\s*Image(?:\s*\d+)?:\s*(?:The Interpreter|Lowy Institute)\s*(?:\n|$)/gi,
+    "\n"
+  );
   md = md.replace(
     /(?:^|\n)#{1,6}\s*Newsletters\s*\n+Subscribe to The Informer[\s\S]*?(?:You may unsubscribe[^\n]*\.?|\n\n)/gi,
     "\n"
@@ -322,7 +337,8 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     if (cleanExp.length > 5) {
       const topLines = md.split("\n");
       let nonEmpties = 0;
-      for (let i = 0; i < topLines.length && nonEmpties < 4; i++) {
+      let removedCount = 0;
+      for (let i = 0; i < topLines.length && nonEmpties < 6 && removedCount < 2; i++) {
         const trimmed = topLines[i].trim();
         if (!trimmed) continue;
         nonEmpties++;
@@ -330,6 +346,7 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
         const textOnly = trimmed
           .replace(/^#+\s+/, "")
           .replace(/^\*\*|\*\*$/g, "")
+          .replace(/^\|\s*/, "")
           .trim()
           .toLowerCase()
           .replace(/[^\w\s]/g, "");
@@ -340,9 +357,11 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
           textOnly.includes(cleanExp);
         if (isExactMatch || isNearMatch) {
           topLines[i] = "";
-          md = topLines.join("\n").trim();
-          break; // Stop after removing the duplicate title - never eat subsequent paragraphs!
+          removedCount++;
         }
+      }
+      if (removedCount > 0) {
+        md = topLines.join("\n").trim();
       }
     }
   }
@@ -433,7 +452,7 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   // 7. Strip tail boilerplate & "What to read next" / footer links
   // Note: Only match "This one is on us" when at the end of the text or followed by meter/signup options
   const footerHeadingRegex =
-    /^#{1,6}\s*(?:What to read next|Read next|Related stories|Related articles|Related content|Related posts|More from\b|More by\b|More articles by\b|More on this topic|Recommended stories|Recommended articles|Trending now|Trending stories|Up next|You might also like|Latest news|More stories|Popular stories|Top stories|About the author|About the authors|Leave a reply|Explore .*? Newsletters|Contact Us|Our Web Pages|Our Books|Our Textbook|Marginal Revolution University|Blogs We Like|Interesting People & Sites|Get the Weekly .*? Newsletter|Try Oso\b|Get Started with Oso|Oso Cloud|Schedule a demo|Book a demo|Talk to an engineer|Join the Community|Join our Community|Related Reading|Further Reading|Ready to get started|Sign up for updates|Share this post)\b/gim;
+    /^#{1,6}\s*(?:What to read next|Read next|Related stories|Related articles|Related content|Related posts|More from\b|More by\b|More articles by\b|More on\b|The Interpreter on\b|Lowy Institute\b|Subscribe to\b|Something feel off\?\s*Check it before you click|Recommended stories|Recommended articles|Trending now|Trending stories|Up next|You might also like|Latest news|More stories|Popular stories|Top stories|About the author|About the authors|Leave a reply|Explore .*? Newsletters|Contact Us|Our Web Pages|Our Books|Our Textbook|Marginal Revolution University|Blogs We Like|Interesting People & Sites|Get the Weekly .*? Newsletter|Try Oso\b|Get Started with Oso|Oso Cloud|Schedule a demo|Book a demo|Talk to an engineer|Join the Community|Join our Community|Related Reading|Further Reading|Ready to get started|Sign up for updates|Share this post)\b/gim;
   const match = footerHeadingRegex.exec(md);
   if (match) {
     if (match.index > 300 && md.length - match.index < md.length * 0.75) {
@@ -620,6 +639,33 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     ""
   );
 
+  // 15m. Strip Lowy Institute / The Interpreter tail author bios, topic tag lists, related article blocks, and cookie notices
+  md = md.replace(
+    /(?:^|\n)(?:About the authors?\s*\n+(?:\[(?:!\[[^\]]*\]\([^\)]+\)\s*)*[^\]]*\]\(https?:\/\/[^\)]*lowyinstitute\.org\/people\/|\[[^\]]+\]\(https?:\/\/[^\)]*lowyinstitute\.org\/people\/)[\s\S]*$|Topics\s*\n+\[[^\]]+\]\(https?:\/\/[^\)]*lowyinstitute\.org\/the-interpreter\/archive\?topic=[\s\S]*$|#{1,6}\s*(?:The Interpreter on|More on|Subscribe to|Lowy Institute)\b[\s\S]*$)/gi,
+    ""
+  );
+  md = md.replace(
+    /(?:^|\n)Privacy notice:\s*We use limited cookies[\s\S]*?(?:Ok,\s*got it|$)/gi,
+    ""
+  );
+
+  // 15n. Strip Malwarebytes Scam Guard & product promo tail blocks
+  md = md.replace(
+    /(?:^|\n)(?:\*\s*\*\s*\*\s*\n+)?#{1,6}\s*(?:\*\*)?Something feel off\?\s*Check it before you click\.?(?:\*\*)?[\s\S]*?\[Try it free[^\]]*\]\([^\)]*\)\s*/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)(?:\*\s*\*\s*\*\s*\n+)?#{1,6}\s*(?:\*\*)?Something feel off\?\s*Check it before you click\.?(?:\*\*)?[\s\S]*?Malwarebytes Scam Guard[^\n]*(?:\s*\n|$)/gi,
+    "\n"
+  );
+
+  // 15o. Strip Ars Technica trailing author bio cards & Most Read carousels
+  md = md.replace(
+    /(?:^|\n)\[!\[Photo of [^\]]+\]\([^\)]*cdn\.arstechnica\.net[^\)]*\)\]\(https?:\/\/arstechnica\.com\/author\/[\s\S]*$/gi,
+    ""
+  );
+  md = md.replace(/(?:^|\n)(?:#{1,6}\s*)?Most Read\s*\n+(?:\s*\d+\.\s+|\s*\*\s+)\[!\[[\s\S]*$/gi, "");
+
   return md.trim();
 }
 
@@ -706,18 +752,31 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     .replace(/<link[^>]*>/gi, "")
     .replace(/<title[^>]*>.*?<\/title>/gis, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gis, "")
+    .replace(/@media\s+[^{]{1,200}\{(?:[^{}]*\{[^}]*\})*\s*\}/gi, "")
+    .replace(
+      /\.[a-zA-Z_-][a-zA-Z0-9_\\-]*[\s>+~,:.\[\]="a-zA-Z0-9_\\-]{0,120}\{[a-zA-Z-]+\s*:[^}]{1,500}\}/g,
+      ""
+    )
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gis, "")
     .replace(/<object[^>]*>[\s\S]*?<\/object>/gis, "")
     .replace(/<embed[^>]*>/gi, "")
     .replace(/<applet[^>]*>[\s\S]*?<\/applet>/gis, "")
     .replace(/<base[^>]*>/gi, "")
+    // Repair malformed unclosed HTML tags immediately preceding an <iframe (e.g. Ars Technica `<div class="relative"<iframe`)
+    .replace(/<([a-zA-Z0-9]+)\b([^<>]*?)(?=<iframe\b)/gi, "<$1$2>")
+    // Repair previously leaked `> referrerpolicy="strict-origin-when-cross-origin"` text outside `<iframe ...>`
+    .replace(
+      /(<iframe\b[^>]*?)>\s*referrerpolicy=["']strict-origin-when-cross-origin["']/gi,
+      '$1 referrerpolicy="strict-origin-when-cross-origin">'
+    )
+    .replace(/>\s*referrerpolicy=["']strict-origin-when-cross-origin["']/gi, ">")
     .replace(
       /<iframe(?![^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)[^>]*>[\s\S]*?<\/iframe>/gis,
       ""
     )
     .replace(
-      /<iframe(?=[^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)(?![^>]*referrerpolicy)[^>]*>/gi,
-      '$& referrerpolicy="strict-origin-when-cross-origin"'
+      /<iframe(?=[^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)(?![^>]*referrerpolicy)([^>]*?)(\/?>)/gi,
+      '<iframe$1 referrerpolicy="strict-origin-when-cross-origin"$2'
     );
 
   // 3b. XSS Defense: Strip all inline DOM event handlers (e.g. onerror, onload, onclick, onmouseover)
@@ -986,9 +1045,13 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
 
-  // 9i-6. Strip Lowy Institute / The Interpreter publication logos, wordmark SVGs, and newsletter boxes
+  // 9i-6. Strip Lowy Institute / The Interpreter publication logos, wordmark SVGs, newsletter boxes, and footer sections
   html = html.replace(
-    /<img[^>]+(?:alt=["'](?:The Interpreter|Lowy Institute|Interpreter)[^"']*["']|src=["'][^"']*(?:the-interpreter|lowyinstitute)[^"']*(?:logo|wordmark|brand|masthead)[^"']*["'])[^>]*>/gi,
+    /<p[^>]*>\s*(?:<a[^>]*>\s*)?<img[^>]+(?:alt=["'][^"']*(?:The Interpreter|Lowy Institute|Interpreter)[^"']*["']|src=["'][^"']*(?:269x44\.svg|31-bligh\.svg|5dcouzig\/production\/[^"']*\.svg|(?:the-interpreter|lowyinstitute)[^"']*(?:logo|wordmark|brand|masthead))[^"']*["'])[^>]*>\s*(?:<\/a>)?(?:\s*\|[^<]*)?\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /(?:<a[^>]*>\s*)?<img[^>]+(?:alt=["'][^"']*(?:The Interpreter|Lowy Institute|Interpreter)[^"']*["']|src=["'][^"']*(?:269x44\.svg|31-bligh\.svg|5dcouzig\/production\/[^"']*\.svg|(?:the-interpreter|lowyinstitute)[^"']*(?:logo|wordmark|brand|masthead))[^"']*["'])[^>]*>\s*(?:<\/a>)?(?:\s*\|[^<\n]*)?/gi,
     ""
   );
   html = html.replace(
@@ -1003,6 +1066,29 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     /<h[1-6][^>]*>\s*Newsletters\s*<\/h[1-6]>[\s\S]*?Subscribe to The Informer[\s\S]*?(?:<\/p>|<\/div>)/gi,
     ""
   );
+  html = html.replace(
+    /(?:<p>\s*About the authors?\s*<\/p>\s*<p>\s*<a[^>]*href=["'][^"']*lowyinstitute\.org\/people\/[\s\S]*$|<p>\s*Topics\s*<\/p>\s*<p>\s*<a[^>]*href=["'][^"']*lowyinstitute\.org\/the-interpreter\/archive\?topic=[\s\S]*$|<h[1-6][^>]*>\s*(?:The Interpreter on|More on|Subscribe to|Lowy Institute)\b[\s\S]*$)/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*Privacy notice:\s*We use limited cookies[\s\S]*?(?:<p>\s*Ok,\s*got it\s*<\/p>|$)/gi,
+    ""
+  );
+  // Strip Malwarebytes Scam Guard trailing promo in HTML
+  html = html.replace(
+    /(?:<hr[^>]*>\s*)?<h[1-6][^>]*>\s*(?:<strong>|<b>)?Something feel off\?\s*Check it before you click\.?(?:<\/strong>|<\/b>)?\s*<\/h[1-6]>[\s\S]*?Try it free[^<]*<\/a>\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /(?:<hr[^>]*>\s*)?<h[1-6][^>]*>\s*(?:<strong>|<b>)?Something feel off\?\s*Check it before you click\.?(?:<\/strong>|<\/b>)?\s*<\/h[1-6]>[\s\S]*?Malwarebytes Scam Guard[\s\S]*?<\/p>/gi,
+    ""
+  );
+  // Strip Ars Technica trailing author bio & Most Read list in HTML
+  html = html.replace(
+    /<a[^>]*href=["']https?:\/\/arstechnica\.com\/author\/[^"']*["'][^>]*>\s*<img[^>]*alt=["']Photo of [\s\S]*$/gi,
+    ""
+  );
+  html = html.replace(/<h[1-6][^>]*>\s*Most Read\s*<\/h[1-6]>\s*<ol[\s\S]*?<\/ol>/gi, "");
 
   // 9i-7. Strip ByteByteGo leading sponsored cards and Foreign Affairs top dates
   html = html.replace(
@@ -1095,50 +1181,68 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
 
-  // 11. Deduplicate leading title / subtitle in HTML if expectedTitle matches (standalone heading or paragraph only)
+  // 11. Deduplicate leading title / subtitle in HTML if expectedTitle matches (standalone heading, paragraph, or newline-prefixed first paragraph)
   if (expectedTitle) {
     const cleanExp = expectedTitle
       .trim()
       .toLowerCase()
       .replace(/[^\w\s]/g, "");
     if (cleanExp.length > 5) {
-      let titleStripped = false;
-      // Strip leading h1 or h2 that duplicates expectedTitle
-      html = html.replace(/^\s*<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i, (match, inner) => {
-        const innerClean = inner
-          .replace(/<[^>]+>/g, "")
-          .trim()
-          .toLowerCase()
-          .replace(/[^\w\s]/g, "");
-        if (
-          innerClean === cleanExp ||
-          (Math.abs(innerClean.length - cleanExp.length) < 15 && innerClean.includes(cleanExp))
-        ) {
-          titleStripped = true;
-          return "";
-        }
-        return match;
-      });
-      // Only strip leading paragraph if title was NOT already stripped and paragraph is an exact/near duplicate
-      if (!titleStripped) {
-        html = html.replace(
-          /^\s*<p[^>]*>\s*(?:<strong>|<b>)?([\s\S]*?)(?:<\/strong>|<\/b>)?\s*<\/p>/i,
-          (match, inner) => {
-            const innerClean = inner
-              .replace(/<[^>]+>/g, "")
-              .trim()
-              .toLowerCase()
-              .replace(/[^\w\s]/g, "");
-            if (
-              innerClean === cleanExp ||
-              (Math.abs(innerClean.length - cleanExp.length) < 15 && innerClean.includes(cleanExp))
-            ) {
-              return "";
-            }
-            return match;
+      // Strip leading h1-h3 that duplicates expectedTitle (allowing optional leading container divs)
+      html = html.replace(
+        /^(\s*(?:<(?:div|article|section|main)\b[^>]*>\s*)*)<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i,
+        (match, prefix, inner) => {
+          const innerClean = inner
+            .replace(/<[^>]+>/g, "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^\w\s]/g, "");
+          if (
+            innerClean === cleanExp ||
+            (Math.abs(innerClean.length - cleanExp.length) < 15 && innerClean.includes(cleanExp))
+          ) {
+            return prefix;
           }
-        );
-      }
+          return match;
+        }
+      );
+      // Strip leading standalone paragraph if it is an exact/near duplicate of expectedTitle (or |expectedTitle)
+      html = html.replace(
+        /^(\s*(?:<(?:div|article|section|main)\b[^>]*>\s*)*)<p[^>]*>\s*(?:<strong>|<b>)?([\s\S]*?)(?:<\/strong>|<\/b>)?\s*<\/p>/i,
+        (match, prefix, inner) => {
+          const innerClean = inner
+            .replace(/<[^>]+>/g, "")
+            .replace(/^\s*\|\s*/, "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^\w\s]/g, "");
+          if (
+            innerClean === cleanExp ||
+            (Math.abs(innerClean.length - cleanExp.length) < 15 && innerClean.includes(cleanExp))
+          ) {
+            return prefix;
+          }
+          return match;
+        }
+      );
+      // If a <p> starts with a line that matches expectedTitle followed by a newline and body text (e.g. Lowy Institute `<p>Title\nBody...`), strip that leading title line
+      html = html.replace(
+        /<p([^>]*)>\s*([^\n<]+)\n+([\s\S]*?)<\/p>/i,
+        (match, attrs, firstLine, rest) => {
+          const firstClean = firstLine
+            .replace(/^\s*\|\s*/, "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^\w\s]/g, "");
+          if (
+            firstClean === cleanExp ||
+            (Math.abs(firstClean.length - cleanExp.length) < 15 && firstClean.includes(cleanExp))
+          ) {
+            return `<p${attrs}>${rest.trim()}</p>`;
+          }
+          return match;
+        }
+      );
     }
   }
 

@@ -585,11 +585,36 @@ export function ReaderView({
     }
   };
 
+  const effectiveVideoId =
+    item.videoId ||
+    item.url?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] ||
+    (currentFullHtml || "").match(
+      /(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+    )?.[1];
+
   let displayHtml = cleanArticleHtml(currentFullHtml || item.snippet || "", item.title);
   if ((!displayHtml || displayHtml.trim().length < 50) && item.fullContentMarkdown) {
     try {
       displayHtml = cleanArticleHtml(marked.parse(item.fullContentMarkdown) as string, item.title);
     } catch {}
+  }
+  if (effectiveVideoId && displayHtml) {
+    const escapedVid = effectiveVideoId.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    displayHtml = displayHtml
+      .replace(
+        new RegExp(
+          `<div[^>]*class=["'][^"']*ars-video-container[^"']*["'][^>]*>[\\s\\S]*?<iframe[^>]*${escapedVid}[^>]*>[\\s\\S]*?<\\/iframe>\\s*<\\/div>\\s*<\\/div>`,
+          "gi"
+        ),
+        ""
+      )
+      .replace(
+        new RegExp(
+          `(?:<div[^>]*>\\s*)?<iframe[^>]*${escapedVid}[^>]*>[\\s\\S]*?<\\/iframe>(?:\\s*<\\/div>)?`,
+          "gi"
+        ),
+        ""
+      );
   }
   const isSnippetOnly = !currentIsFullFetched && (!currentFullHtml || currentFullHtml.length < 500);
 
@@ -950,31 +975,18 @@ export function ReaderView({
           </div>
 
           {/* Embedded Video Player if YouTube */}
-          {(() => {
-            const effectiveVideoId =
-              item.videoId ||
-              item.url?.match(
-                /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-              )?.[1] ||
-              (currentFullHtml || "").match(
-                /(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-              )?.[1];
-
-            if (!effectiveVideoId) return null;
-
-            return (
-              <div className="mb-8 rounded-xl overflow-hidden aspect-video bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
-                <iframe
-                  src={`https://www.youtube.com/embed/${effectiveVideoId}?autoplay=0&rel=0`}
-                  title={item.title}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              </div>
-            );
-          })()}
+          {effectiveVideoId && (
+            <div className="mb-8 rounded-xl overflow-hidden aspect-video bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
+              <iframe
+                src={`https://www.youtube.com/embed/${effectiveVideoId}?autoplay=0&rel=0`}
+                title={item.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </div>
+          )}
 
           {/* Snippet Notice & Full Page Call-To-Action */}
           {isSnippetOnly && (

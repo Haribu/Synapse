@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { cleanArticleHtml, cleanArticleMarkdown } from "./clean-article";
+import { extractSnippet } from "../services/feed-fetcher";
 
 describe("cleanArticleHtml - Hyperlink & Monolithic Text Preservation", () => {
   it("preserves hyperlinks without clipping or leaving dangling attributes (Bug 17/10/2026)", () => {
@@ -91,12 +92,63 @@ describe("cleanArticleHtml - Cross-Site Scripting (XSS) & Active Content Sanitiz
     expect(cleaned).toContain("<p>Content</p>");
   });
 
-  it("preserves legitimate YouTube embed iframes with strict referrerpolicy", () => {
-    const input = `<iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315"></iframe>`;
+  it("preserves legitimate YouTube embed iframes with strict referrerpolicy inside the opening tag (Feedback 712cfe23)", () => {
+    const input = `<div class="ars-video-container"><div class="relative"<iframe class="absolute" src="https://www.youtube.com/embed/uJqaGLmZpGo?start=0&wmode=transparent" allowfullscreen=""></iframe></div></div>`;
     const cleaned = cleanArticleHtml(input);
 
-    expect(cleaned).toContain('src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
-    expect(cleaned).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+    expect(cleaned).toContain('<div class="relative"><iframe');
+    expect(cleaned).toContain('src="https://www.youtube.com/embed/uJqaGLmZpGo?start=0&wmode=transparent"');
+    expect(cleaned).toContain('referrerpolicy="strict-origin-when-cross-origin"></iframe>');
+    expect(cleaned).not.toContain('> referrerpolicy=');
+    expect(cleaned).not.toContain('"> referrerpolicy=');
+  });
+
+  it("repairs previously leaked > referrerpolicy attribute outside iframe tags", () => {
+    const corrupted = `<div class="relative"><iframe src="https://www.youtube.com/embed/uJqaGLmZpGo"> referrerpolicy="strict-origin-when-cross-origin"</iframe></div>`;
+    const cleaned = cleanArticleHtml(corrupted);
+
+    expect(cleaned).toContain(
+      '<iframe src="https://www.youtube.com/embed/uJqaGLmZpGo" referrerpolicy="strict-origin-when-cross-origin"></iframe>'
+    );
+    expect(cleaned).not.toContain("> referrerpolicy=");
+  });
+});
+
+describe("cleanArticleMarkdown & cleanArticleHtml - Malwarebytes / Kadence CSS & Empty-Alt Images (Feedback 769dcf80)", () => {
+  it("strips leaked WordPress Kadence CSS rules and preserves empty-alt Markdown images ![](url)", () => {
+    const rawHtml = `<p>.kt-inside-inner-col{padding-top:20px;padding-bottom:20px;}.kadence-column123 > .kt-inside-inner-col{margin-top:10px;}@media all and (max-width: 1024px){.kadence-column123 > .kt-inside-inner-col{padding-top:10px;}}Social media feeds are overflowing with eerie, AI-generated Halloween clips.</p><p><img src="https://www.malwarebytes.com/wp-content/uploads/sites/2/2026/10/halloween_1-1.png?w=1024" alt="" /></p><h3><strong>Something feel off? Check it before you click.</strong></h3><p>Use <strong>Malwarebytes Scam Guard</strong> to check links. <a href="https://www.malwarebytes.com/scam-guard">Try it free →</a></p>`;
+    const rawMd = `.kt-inside-inner-col{padding-top:20px;padding-bottom:20px;}@media all and (max-width: 1024px){.kadence-column123 > .kt-inside-inner-col{padding-top:10px;}}Social media feeds are overflowing with eerie, AI-generated Halloween clips.
+
+![](https://www.malwarebytes.com/wp-content/uploads/sites/2/2026/10/halloween_1-1.png?w=1024)
+
+!
+
+* * *
+
+### **Something feel off? Check it before you click.**
+
+Use **Malwarebytes Scam Guard** to check links. [Try it free →](https://www.malwarebytes.com/scam-guard)`;
+
+    const cleanedHtml = cleanArticleHtml(rawHtml, "AI Halloween videos: Who’s getting your photos?");
+    const cleanedMd = cleanArticleMarkdown(rawMd, "AI Halloween videos: Who’s getting your photos?");
+    const snippet = extractSnippet(rawHtml, rawHtml);
+
+    expect(cleanedHtml).not.toContain(".kt-inside-inner-col");
+    expect(cleanedHtml).not.toContain("@media");
+    expect(cleanedHtml).not.toContain("Malwarebytes Scam Guard");
+    expect(cleanedHtml).toContain("Social media feeds are overflowing");
+    expect(cleanedHtml).toContain("halloween_1-1.png");
+
+    expect(cleanedMd).not.toContain(".kt-inside-inner-col");
+    expect(cleanedMd).not.toContain("@media");
+    expect(cleanedMd).not.toContain("Malwarebytes Scam Guard");
+    expect(cleanedMd).toContain(
+      "![](https://www.malwarebytes.com/wp-content/uploads/sites/2/2026/10/halloween_1-1.png?w=1024)"
+    );
+    expect(cleanedMd).not.toMatch(/(?:^|\n)!\s*(?:\n|$)/);
+
+    expect(snippet).not.toContain(".kt-inside-inner-col");
+    expect(snippet).toContain("Social media feeds are overflowing");
   });
 });
 
@@ -160,5 +212,64 @@ They manage water security and build community resilience.`;
     expect(matches).not.toBeNull();
     expect(matches!.length).toBe(1);
     expect(cleaned).toContain("Second paragraph with unique research findings.");
+  });
+
+  it("strips Sanity.io SVG wordmark links, pipe-delimited duplicate titles, newline-joined lead titles, and tail sections (Feedback ff5206e1)", () => {
+    const title = "Australian rifles, private guns and PNG’s 2027 election";
+    const mdInput = `# ${title}
+
+[![Image 3: The Interpreter](https://cdn.sanity.io/images/5dcouzig/production/d6620f354868dc5293cf6b12f9ecd6561d361b25-269x44.svg)](https://www.lowyinstitute.org/the-interpreter/archive)|${title}
+
+${title}
+Gun violence has become a critical issue in Papua New Guinea ahead of the 2027 national election.
+
+[Michael Kabuni](https://www.lowyinstitute.org/people/michael-kabuni)
+
+28 October 2026 5 min read
+
+The proliferation of high-powered firearms poses severe challenges for electoral security.
+
+About the author
+[![Image 5: Michael Kabuni](https://cdn.sanity.io/images/5dcouzig/production/avatar.jpg)](https://www.lowyinstitute.org/people/michael-kabuni)
+## The Interpreter on Papua New Guinea
+## Subscribe to
+### Lowy Institute
+![Image 10](https://www.lowyinstitute.org/images/31-bligh.svg)
+Privacy notice: We use limited cookies to understand how visitors interact with our website.
+Ok, got it`;
+
+    const htmlInput = `<div>
+      <p><a href="https://www.lowyinstitute.org/the-interpreter/archive"><img src="https://cdn.sanity.io/images/5dcouzig/production/d6620f354868dc5293cf6b12f9ecd6561d361b25-269x44.svg" alt="Image 3: The Interpreter"></a>|${title}</p>
+      <p>${title}\nGun violence has become a critical issue in Papua New Guinea ahead of the 2027 national election.</p>
+      <p><a href="https://www.lowyinstitute.org/people/michael-kabuni">Michael Kabuni</a></p>
+      <p>28 October 2026 5 min read</p>
+      <p>The proliferation of high-powered firearms poses severe challenges for electoral security.</p>
+      <p>About the author</p>
+      <p><a href="https://www.lowyinstitute.org/people/michael-kabuni">Michael Kabuni</a></p>
+      <h2>The Interpreter on Papua New Guinea</h2>
+      <h3>Lowy Institute</h3>
+      <img src="https://www.lowyinstitute.org/images/31-bligh.svg" alt="31 Bligh">
+      <p>Privacy notice: We use limited cookies to understand how visitors interact with our website.</p>
+      <p>Ok, got it</p>
+    </div>`;
+
+    const cleanedMd = cleanArticleMarkdown(mdInput, title);
+    const cleanedHtml = cleanArticleHtml(htmlInput, title);
+
+    expect(cleanedMd).not.toContain("269x44.svg");
+    expect(cleanedMd).not.toContain("31-bligh.svg");
+    expect(cleanedMd).not.toContain("Image 3: The Interpreter");
+    expect(cleanedMd).not.toContain(title);
+    expect(cleanedMd).not.toContain("The Interpreter on Papua New Guinea");
+    expect(cleanedMd).not.toContain("Privacy notice:");
+    expect(cleanedMd).toContain("Gun violence has become a critical issue in Papua New Guinea");
+
+    expect(cleanedHtml).not.toContain("269x44.svg");
+    expect(cleanedHtml).not.toContain("31-bligh.svg");
+    expect(cleanedHtml).not.toContain("Image 3: The Interpreter");
+    expect(cleanedHtml).not.toContain(title);
+    expect(cleanedHtml).not.toContain("The Interpreter on Papua New Guinea");
+    expect(cleanedHtml).not.toContain("Privacy notice:");
+    expect(cleanedHtml).toContain("Gun violence has become a critical issue in Papua New Guinea");
   });
 });

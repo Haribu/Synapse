@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.5] - 2026-10-28
+
+### Fixed
+- **WordPress Kadence Inline CSS & Empty-Alt Image Preservation (Feedback `769dcf80`):**
+  - Stripped unwrapped WordPress Kadence inline CSS rules (`.kt-inside-inner-col{...}`, `.kadence-column...{...}`, `@media all and (...){...}`) across `cleanArticleMarkdown`, `cleanArticleHtml`, and `extractSnippet` in `clean-article.ts` and `feed-fetcher.ts`, plus Malwarebytes Scam Guard trailing promotional blocks.
+  - Added negative lookbehind `(?<!!)` to empty-link removal in `cleanArticleMarkdown` so Markdown images with empty alt text (`![](https://...)`) are preserved instead of being stripped down to bare `!` characters across 148 articles.
+- **YouTube Iframe `referrerpolicy` Attribute Injection & Malformed Tag Repair (Feedback `712cfe23`):**
+  - Fixed `<iframe` `referrerpolicy` injection in `cleanArticleHtml` (`clean-article.ts`) so `referrerpolicy="strict-origin-when-cross-origin"` is inserted *inside* the opening `<iframe ...>` tag before `>` instead of after `>`.
+  - Added automatic repair for malformed unclosed parent tags preceding `<iframe` (e.g., Ars Technica `<div class="relative"<iframe`) and healed previously stored `> referrerpolicy="strict-origin-when-cross-origin"` text leaks.
+  - Deduped inline YouTube `<iframe>` embeds in `ReaderView.tsx` when the same `effectiveVideoId` is already rendered in the top hero video player.
+- **Lowy Institute / The Interpreter Sanity.io SVG Wordmark & Title Deduplication (Feedback `ff5206e1`):**
+  - Stripped Sanity.io SVG wordmarks (`269x44.svg`, `31-bligh.svg`, `[![Image 3: The Interpreter](...)](...)|<Title>`) and newline-joined duplicate titles (`<p>Title\nBody...</p>`) in `cleanArticleMarkdown` and `cleanArticleHtml`.
+  - Stripped Lowy Institute tail sections (`About the author`, `Topics`, `## The Interpreter on ...`, `## More on ...`, `## Subscribe to`, `### Lowy Institute`, and cookie consent banners).
+- **Feed Sync Health & YouTube 404 Fallback Resilience:**
+  - Exempted the synthetic `synapse-welcome` (`synapse.local`) onboarding feed from network fetching in `sync-engine.ts`.
+  - Added `/channel/UC.../videos` `ytInitialData` fallback in `feed-fetcher.ts` when YouTube's `/feeds/videos.xml` Atom endpoint returns `HTTP 404/400/5xx`, plus automatic browser User-Agent retry on `HTTP 403` and legacy feed URL auto-healing (`Marginal REVOLUTION`, `Trend Micro`).
+- **Automated Startup Hygiene, Feedback Sync & Zero-`curl` Verification (`/api/health` & `verify:deploy`):**
+  - Updated `/api/health` (`src/app/api/health/route.ts`) to automatically run `reconcileFeedbackWithObsidian()` and a one-time version-keyed in-place database hygiene sweep (`rehydrateAndCleanTargetedSources`) when a new `APP_VERSION` boots, exposing live `hygiene` metrics (`referrerLeaks`, `cssSnippetLeaks`, `openFeedbackCount`) verified by `bun run verify:deploy` (`scripts/verify-deploy.ts`).
+
 ## [1.1.4] - 2026-10-26
 
 ### Fixed

@@ -151,83 +151,87 @@ export async function PATCH(req: Request) {
   }
 }
 
-export async function GET() {
+export function reconcileFeedbackWithObsidian() {
+  // 1. Reconcile statuses from canonical Obsidian Feedback-Log.md IF vault is mounted
   try {
-    // 1. Reconcile statuses from canonical Obsidian Feedback-Log.md IF vault is mounted
-    try {
-      const vaultRoot = getVaultPath();
-      if (vaultRoot) {
-        const feedbackFilePath = path.join(vaultRoot, "01 - Inbox/Synapse/Feedback-Log.md");
-        if (fs.existsSync(feedbackFilePath)) {
-          const fileContent = fs.readFileSync(feedbackFilePath, "utf8");
-          const sections = fileContent.split(/\n(?=### )/);
+    const vaultRoot = getVaultPath();
+    if (vaultRoot) {
+      const feedbackFilePath = path.join(vaultRoot, "01 - Inbox/Synapse/Feedback-Log.md");
+      if (fs.existsSync(feedbackFilePath)) {
+        const fileContent = fs.readFileSync(feedbackFilePath, "utf8");
+        const sections = fileContent.split(/\n(?=### )/);
 
-          // Map comment prefix -> { status, notes }
-          const statusMap = new Map<string, { status: string; notes?: string }>();
-          for (const sec of sections) {
-            if (!sec.startsWith("### ")) continue;
-            const isImplemented = sec.includes("✅ **Implemented**");
-            const isOpen = sec.includes("⏳ **Open**");
+        // Map comment prefix -> { status, notes }
+        const statusMap = new Map<string, { status: string; notes?: string }>();
+        for (const sec of sections) {
+          if (!sec.startsWith("### ")) continue;
+          const isImplemented = sec.includes("✅ **Implemented**");
+          const isOpen = sec.includes("⏳ **Open**");
 
-            let notes: string | undefined;
-            const statusMatch = sec.match(
-              /\*Status:\*\s*✅\s*\*\*Implemented\*\*(?:\s*—\s*\*([^*]+)\*)?/i
-            );
-            if (statusMatch && statusMatch[1]) {
-              notes = statusMatch[1].trim();
-            }
-
-            const lines = sec.split("\n");
-            let commentLines: string[] = [];
-            let recording = false;
-            for (const l of lines) {
-              if (recording) {
-                if (
-                  l.startsWith("*Context Article:*") ||
-                  l.startsWith("*View:*") ||
-                  l.startsWith("---")
-                )
-                  break;
-                if (l.trim()) commentLines.push(l.trim());
-              } else if (l.startsWith("*Status:*")) {
-                recording = true;
-              }
-            }
-            const commentKey = commentLines.join(" ").slice(0, 45).trim().toLowerCase();
-            if (commentKey) {
-              statusMap.set(commentKey, {
-                status: isImplemented ? "implemented" : isOpen ? "open" : "open",
-                notes,
-              });
-            }
+          let notes: string | undefined;
+          const statusMatch = sec.match(
+            /\*Status:\*\s*✅\s*\*\*Implemented\*\*(?:\s*—\s*\*([^*]+)\*)?/i
+          );
+          if (statusMatch && statusMatch[1]) {
+            notes = statusMatch[1].trim();
           }
 
-          const dbItems = db.select().from(feedback).all();
-          for (const item of dbItems) {
-            const key = item.comment.slice(0, 45).trim().toLowerCase();
-            const match = statusMap.get(key);
-            
-            // Only update SQLite if Obsidian has newly marked it implemented
-            if (match && match.status === "implemented" && item.status !== "implemented") {
-              db.update(feedback)
-                .set({
-                  status: "implemented",
-                  resolutionNotes: match.notes || item.resolutionNotes,
-                  resolvedAt: item.resolvedAt || new Date(),
-                })
-                .where(eq(feedback.id, item.id))
-                .run();
-            } 
-            // If SQLite is already implemented, but Obsidian still shows Open, update Obsidian (never downgrade SQLite)
-            else if (item.status === "implemented" && match && match.status !== "implemented") {
-              updateObsidianFeedbackLog(item.comment, "implemented", item.resolutionNotes);
+          const lines = sec.split("\n");
+          let commentLines: string[] = [];
+          let recording = false;
+          for (const l of lines) {
+            if (recording) {
+              if (
+                l.startsWith("*Context Article:*") ||
+                l.startsWith("*View:*") ||
+                l.startsWith("---")
+              )
+                break;
+              if (l.trim()) commentLines.push(l.trim());
+            } else if (l.startsWith("*Status:*")) {
+              recording = true;
             }
+          }
+          const commentKey = commentLines.join(" ").slice(0, 45).trim().toLowerCase();
+          if (commentKey) {
+            statusMap.set(commentKey, {
+              status: isImplemented ? "implemented" : isOpen ? "open" : "open",
+              notes,
+            });
+          }
+        }
+
+        const dbItems = db.select().from(feedback).all();
+        for (const item of dbItems) {
+          const key = item.comment.slice(0, 45).trim().toLowerCase();
+          const match = statusMap.get(key);
+
+          // Only update SQLite if Obsidian has newly marked it implemented
+          if (match && match.status === "implemented" && item.status !== "implemented") {
+            db.update(feedback)
+              .set({
+                status: "implemented",
+                resolutionNotes: match.notes || item.resolutionNotes,
+                resolvedAt: item.resolvedAt || new Date(),
+              })
+              .where(eq(feedback.id, item.id))
+              .run();
+          }
+          // If SQLite is already implemented, but Obsidian still shows Open, update Obsidian (never downgrade SQLite)
+          else if (item.status === "implemented" && match && match.status !== "implemented") {
+            updateObsidianFeedbackLog(item.comment, "implemented", item.resolutionNotes);
           }
         }
       }
-    } catch (syncErr) {
-      console.warn("[Feedback] Vault status sync error:", syncErr);
     }
+  } catch (syncErr) {
+    console.warn("[Feedback] Vault status sync error:", syncErr);
+  }
+}
+
+export async function GET() {
+  try {
+    reconcileFeedbackWithObsidian();
 
     // 2. Prune closed feedback older than 7 days from the in-app SQLite database
     // All open items are always preserved; historical closed entries remain in Obsidian Feedback-Log.md

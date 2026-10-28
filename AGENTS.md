@@ -38,6 +38,10 @@ The following actions should ONLY be executed when explicitly requested for depl
 3. **Unified Deployment Verification:** (`bun run verify:deploy`).
 4. **UI Viewport Capture:** (`bun run verify:ui`).
 
+> **Zero Ad-Hoc `curl` Rule (STRICT):** Never execute ad-hoc `curl` commands against the container to test extraction, trigger rehydration, create backups, or patch feedback status.
+> - **Unit & Extraction Regressions:** Always write unit tests in `src/lib/utils/clean-article.test.ts` (or `src/lib/**/*.test.ts`) and run them via `docker compose --profile test run --rm tester`.
+> - **In-Place Rehydration & Feedback Sync:** Built directly into `/api/health` and `/api/feedback` — when `synapse-reader` boots a new `APP_VERSION` (`docker compose up -d --build --wait`), its healthcheck automatically reconciles `/obsidian-vault/01 - Inbox/Synapse/Feedback-Log.md` with SQLite, triggers an in-place database hygiene sweep (`rehydrateAndCleanTargetedSources`), and reports `hygiene` metrics (`referrerLeaks`, `cssSnippetLeaks`, `openFeedbackCount`) verified by `bun run verify:deploy`.
+
 ### C. Database Integrity & Anti-Corruption Protocol (STRICT)
 
 - **Zero Host-Level SQLite Writes While Container is Running:** NEVER execute `sqlite3 ./data/synapse.db` directly from the host while the Docker container is active.

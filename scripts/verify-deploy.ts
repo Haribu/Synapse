@@ -56,7 +56,19 @@ async function main() {
     const statusText = c.status ? `HTTP ${c.status}` : "CONN_REFUSED";
     console.log(`${icon} [${statusText}] ${c.name} (${c.durationMs}ms)`);
     if (c.details && typeof c.details === "object" && c.details.status) {
-      console.log(`   └─ DB: ${c.details.db || "N/A"} · Uptime: ${c.details.uptime ?? "N/A"}s`);
+      console.log(
+        `   └─ Version: ${c.details.version || "N/A"} · DB: ${c.details.db || "N/A"} · Uptime: ${c.details.uptime ?? "N/A"}s`
+      );
+      if (c.details.hygiene) {
+        const h = c.details.hygiene;
+        console.log(
+          `   └─ Hygiene: referrerLeaks=${h.referrerLeaks}, cssSnippetLeaks=${h.cssSnippetLeaks}, openFeedback=${h.openFeedbackCount}`
+        );
+        if (h.referrerLeaks > 0 || h.cssSnippetLeaks > 0) {
+          console.error(`   ❌ Content hygiene regression detected in database!`);
+          allPassed = false;
+        }
+      }
     }
     if (!c.ok) {
       allPassed = false;

@@ -1,6 +1,6 @@
 import { db, sqlite } from "@/lib/db";
-import { feeds, feedItems } from "@/lib/db/schema";
-import { fetchFeed } from "@/lib/services/feed-fetcher";
+import { feeds, feedItems, readingList } from "@/lib/db/schema";
+import { fetchFeed, extractSnippet } from "@/lib/services/feed-fetcher";
 import { resolveYouTubeLongFormFeed } from "@/lib/services/youtube";
 import { logger } from "@/lib/services/logger";
 import { eq, sql, desc, and, or, ne, isNull, gte } from "drizzle-orm";
@@ -73,6 +73,40 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
       durationMs: 0,
       error: "Feed not found",
     };
+  }
+
+  // Exempt synthetic local welcome feed from remote HTTP fetching
+  if (feed.id === "synapse-welcome" || feed.feedUrl.includes("synapse.local")) {
+    const now = new Date();
+    db.update(feeds)
+      .set({
+        lastFetchedAt: now,
+        errorCount: 0,
+        lastError: null,
+      })
+      .where(eq(feeds.id, feedId))
+      .run();
+    return {
+      feedId,
+      title: feed.title,
+      healthy: true,
+      status: "not_modified",
+      newItemsCount: 0,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  // Auto-heal known legacy/broken feed URLs
+  const legacyUrlRedirects: Record<string, string> = {
+    "http://www.marginalrevolution.com/marginalrevolution/index.rdf":
+      "https://marginalrevolution.com/feed",
+    "http://feeds.trendmicro.com/TrendMicroSimplySecurity":
+      "https://feeds.feedburner.com/TrendMicroSimplySecurity",
+  };
+  if (legacyUrlRedirects[feed.feedUrl]) {
+    const healedUrl = legacyUrlRedirects[feed.feedUrl];
+    db.update(feeds).set({ feedUrl: healedUrl }).where(eq(feeds.id, feedId)).run();
+    feed.feedUrl = healedUrl;
   }
 
   // Auto-heal poisoned YouTube feeds: restore channel_id=UC or playlist_id=UU back to UULF...
@@ -649,7 +683,30 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     "%lowyinstitute%",
     "%foreignaffairs%",
     "%marginalrevolution%",
+    "%malwarebytes%",
+    "%cyentia%",
   ];
+
+  // Heal synthetic welcome feed and known legacy feed URLs during maintenance sweep
+  try {
+    sqlite
+      .prepare(
+        `UPDATE feeds SET error_count = 0, last_error = NULL WHERE id = 'synapse-welcome' OR feed_url LIKE '%synapse.local%'`
+      )
+      .run();
+    sqlite
+      .prepare(
+        `UPDATE feeds SET feed_url = 'https://marginalrevolution.com/feed', error_count = 0, last_error = NULL WHERE feed_url = 'http://www.marginalrevolution.com/marginalrevolution/index.rdf'`
+      )
+      .run();
+    sqlite
+      .prepare(
+        `UPDATE feeds SET feed_url = 'https://feeds.feedburner.com/TrendMicroSimplySecurity', error_count = 0, last_error = NULL WHERE feed_url = 'http://feeds.trendmicro.com/TrendMicroSimplySecurity'`
+      )
+      .run();
+  } catch {
+    // ignore
+  }
 
   const keywordConditions = or(
     ...targetKeywords.map((k) => sql`${feedItems.url} LIKE ${k}`),
@@ -657,6 +714,10 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     sql`${feedItems.author} LIKE '%@%'`,
     sql`${feedItems.author} LIKE '%www.%'`,
     sql`${feedItems.author} LIKE '%- Articles%'`,
+    sql`${feedItems.snippet} LIKE '%{padding%' OR ${feedItems.snippet} LIKE '%@media%'`,
+    sql`${feedItems.fullContentHtml} LIKE '%> referrerpolicy=%' OR ${feedItems.fullContentHtml} LIKE '%<div class="relative"<iframe%'`,
+    sql`${feedItems.fullContentMarkdown} LIKE '%' || char(10) || '!' || char(10) || '%'`,
+    sql`${feedItems.fullContentMarkdown} LIKE '%269x44.svg%' OR ${feedItems.fullContentMarkdown} LIKE '%31-bligh.svg%'`,
     sql`${feedItems.fullContentMarkdown} IS NULL AND length(${feedItems.fullContentHtml}) > 200`,
     sql`(${feedItems.fullContentMarkdown} IS NULL OR length(${feedItems.fullContentMarkdown}) < 50) AND ${feedItems.mediaType} = 'article'`,
     sql`(${feedItems.fullContentHtml} IS NULL OR length(${feedItems.fullContentHtml}) < 50) AND ${feedItems.mediaType} = 'article'`,
@@ -740,39 +801,66 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         entitiesDecodedCount++;
       }
     }
-    if (item.snippet && /&(?:#\d+|amp|quot|lt|gt|#39|apos);/i.test(item.snippet)) {
-      const decodedSnippet = decodeHtmlEntities(item.snippet);
-      if (decodedSnippet !== item.snippet) {
-        updatePayload.snippet = decodedSnippet;
+    if (
+      item.snippet &&
+      (/&(?:#\d+|amp|quot|lt|gt|#39|apos);/i.test(item.snippet) ||
+        item.snippet.includes("{padding") ||
+        item.snippet.includes("@media") ||
+        item.snippet.includes(".kt-") ||
+        item.snippet.includes(".kadence-"))
+    ) {
+      const cleanedSnippet = extractSnippet(item.snippet, item.fullContentHtml);
+      if (cleanedSnippet && cleanedSnippet !== item.snippet) {
+        updatePayload.snippet = cleanedSnippet;
         needsUpdate = true;
       }
     }
 
     // 2b. Synthesize missing snippet from content
     if (!item.snippet || item.snippet.trim().length === 0) {
-      const rawText = (item.fullContentHtml || item.fullContentMarkdown || "")
-        .replace(/<[^>]*>?/gm, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (rawText.length > 0) {
-        updatePayload.snippet = decodeHtmlEntities(rawText.slice(0, 300));
+      const synthesized = extractSnippet(item.fullContentHtml, item.fullContentMarkdown);
+      if (synthesized.length > 0) {
+        updatePayload.snippet = synthesized;
         needsUpdate = true;
       }
     }
 
-    // 3. Clean stored Markdown and HTML in-place (never overwrite with empty content)
-    if (item.fullContentMarkdown) {
-      const cleanedMd = cleanArticleMarkdown(item.fullContentMarkdown, item.title);
-      if (cleanedMd && cleanedMd.length > 50 && cleanedMd !== item.fullContentMarkdown) {
-        updatePayload.fullContentMarkdown = cleanedMd;
+    // 3. Clean stored HTML and Markdown in-place (never overwrite with empty content)
+    let effectiveHtml = item.fullContentHtml;
+    if (item.fullContentHtml) {
+      const cleanedHtml = cleanArticleHtml(item.fullContentHtml, item.title);
+      if (cleanedHtml && cleanedHtml.length > 50 && cleanedHtml !== item.fullContentHtml) {
+        updatePayload.fullContentHtml = cleanedHtml;
+        effectiveHtml = cleanedHtml;
         needsUpdate = true;
       }
     }
-    if (item.fullContentHtml) {
-      const cleanedHtml = cleanArticleHtml(item.fullContentHtml);
-      if (cleanedHtml && cleanedHtml.length > 50 && cleanedHtml !== item.fullContentHtml) {
-        updatePayload.fullContentHtml = cleanedHtml;
-        needsUpdate = true;
+    if (item.fullContentMarkdown) {
+      // If Markdown had empty-alt images corrupted into standalone '!' lines and HTML has <img> tags, regenerate Markdown from cleaned HTML
+      if (
+        /(?:^|\n)!\s*(?:\n|$)/.test(item.fullContentMarkdown) &&
+        effectiveHtml &&
+        /<img\b/i.test(effectiveHtml)
+      ) {
+        try {
+          const regeneratedMd = cleanArticleMarkdown(turndown.turndown(effectiveHtml), item.title);
+          if (regeneratedMd && regeneratedMd.length > 50 && regeneratedMd !== item.fullContentMarkdown) {
+            updatePayload.fullContentMarkdown = regeneratedMd;
+            needsUpdate = true;
+          }
+        } catch {
+          const cleanedMd = cleanArticleMarkdown(item.fullContentMarkdown, item.title);
+          if (cleanedMd && cleanedMd.length > 50 && cleanedMd !== item.fullContentMarkdown) {
+            updatePayload.fullContentMarkdown = cleanedMd;
+            needsUpdate = true;
+          }
+        }
+      } else {
+        const cleanedMd = cleanArticleMarkdown(item.fullContentMarkdown, item.title);
+        if (cleanedMd && cleanedMd.length > 50 && cleanedMd !== item.fullContentMarkdown) {
+          updatePayload.fullContentMarkdown = cleanedMd;
+          needsUpdate = true;
+        }
       }
     }
 
@@ -798,14 +886,8 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       }
     }
 
-    const hasCorruptOrEmptyContent =
-      !item.fullContentHtml ||
-      item.fullContentHtml.length < 50 ||
-      !item.fullContentMarkdown ||
-      item.fullContentMarkdown.length < 50;
-
-    // 4. If refetch is requested OR if article has no full content yet OR content was stripped/corrupted
-    if (shouldRefetch || (!item.isFullFetched && !isYt) || (hasCorruptOrEmptyContent && !isYt)) {
+    // 4. Only perform remote web extraction when explicitly requested via shouldRefetch
+    if (shouldRefetch && !isYt) {
       try {
         const extracted = await extractReadableContent(item.url);
         if (extracted && extracted.contentHtml && extracted.contentHtml.length > 50) {
@@ -828,6 +910,40 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       db.update(feedItems).set(updatePayload).where(eq(feedItems.id, item.id)).run();
       cleanedStoredCount++;
     }
+  }
+
+  // Also sanitize any saved reading_list items in-place
+  try {
+    const savedRows = db.select().from(readingList).all();
+    for (const row of savedRows) {
+      let rowChanged = false;
+      const rowUpdate: Record<string, any> = {};
+      if (row.fullContentHtml) {
+        const cleanedHtml = cleanArticleHtml(row.fullContentHtml, row.title || undefined);
+        if (cleanedHtml && cleanedHtml.length > 50 && cleanedHtml !== row.fullContentHtml) {
+          rowUpdate.fullContentHtml = cleanedHtml;
+          rowChanged = true;
+        }
+      }
+      if (row.fullContentMarkdown) {
+        const htmlSource = rowUpdate.fullContentHtml || row.fullContentHtml;
+        const cleanedMd =
+          /(?:^|\n)!\s*(?:\n|$)/.test(row.fullContentMarkdown) &&
+          htmlSource &&
+          /<img\b/i.test(htmlSource)
+            ? cleanArticleMarkdown(turndown.turndown(htmlSource), row.title || undefined)
+            : cleanArticleMarkdown(row.fullContentMarkdown, row.title || undefined);
+        if (cleanedMd && cleanedMd.length > 50 && cleanedMd !== row.fullContentMarkdown) {
+          rowUpdate.fullContentMarkdown = cleanedMd;
+          rowChanged = true;
+        }
+      }
+      if (rowChanged) {
+        db.update(readingList).set(rowUpdate).where(eq(readingList.id, row.id)).run();
+      }
+    }
+  } catch {
+    // ignore
   }
 
   const durationMs = Date.now() - startTime;

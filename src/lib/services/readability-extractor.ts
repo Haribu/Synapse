@@ -932,7 +932,8 @@ export async function extractReadableContent(targetUrl: string): Promise<Extract
     return null;
   }
 
-  const html = await response.text();
+  const rawHtml = await response.text();
+  const html = rawHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gis, "");
   const dom = new JSDOM(html, { url: targetUrl });
   const doc = dom.window.document;
 

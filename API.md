@@ -244,7 +244,36 @@ GET /api/digest/work
 
 ---
 
-## 5. Code Examples
+## 5. System Health, Hygiene & Feedback Sync (`/api/health`)
+
+### Health Probe & Automated Version-Keyed Hygiene
+
+Probes SQLite database readiness, returns live content hygiene telemetry (`referrerLeaks`, `cssSnippetLeaks`, `openFeedbackCount`), and automatically reconciles `/obsidian-vault/01 - Inbox/Synapse/Feedback-Log.md` with SQLite plus triggers a one-time in-place database hygiene sweep (`rehydrateAndCleanTargetedSources`) whenever a new `APP_VERSION` boots.
+
+```http
+GET /api/health
+```
+
+#### Example Response
+
+```json
+{
+  "status": "ok",
+  "version": "1.1.5",
+  "uptime": 142,
+  "db": "healthy",
+  "hygiene": {
+    "referrerLeaks": 0,
+    "cssSnippetLeaks": 0,
+    "openFeedbackCount": 0
+  },
+  "timestamp": "2026-10-28T09:40:00.000Z"
+}
+```
+
+---
+
+## 6. Code Examples
 
 ### Python (AI Research Agent Example)
 
