@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-10-28
+
+### Changed
+- **Extended Evaluation Window to 90 Days & Enforced Strict Volume Floors:**
+  - Extended the audit lookback window from 30 days to 90 days (3 months) to accurately assess sustained publication and engagement patterns.
+  - Implemented a strict volume floor: feeds publishing fewer than 15 articles in 90 days ($< 1.25$ articles/week) are **strictly exempt** from Loud Exhaustion and Skim & Flick flags, completely safeguarding high-value, low-frequency specialist blogs and essayists (*Wait But Why*, *Dan Wang*, *SpecterOps*, *The DFIR Report*, *37signals*).
+  - Raised the Loud Exhaustion threshold to require $\ge 25$ articles in 90 days with $\le 7\%$ engaged read rate and 0 starred items, cutting false positives down from 96 to 13 focused, high-volume/low-engagement culprits (*The Hacker News*, *Dark Reading*, *Malwarebytes*, *Recorded Future*).
+  - Restricted Dormant / Failing classification to feeds with $\ge 10$ consecutive network/fetch errors, exempting healthy quiet publications that post infrequently.
+
 ## [1.2.1] - 2026-10-28
 
 ### Fixed

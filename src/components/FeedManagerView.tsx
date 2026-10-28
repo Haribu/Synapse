@@ -1039,7 +1039,7 @@ export function FeedManagerView({
                     {/* Diagnostics & Evidence Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-950/60 p-3 rounded-lg border border-slate-100 dark:border-slate-800 text-xs">
                       <div>
-                        <div className="text-[10px] text-slate-400">30-Day Volume</div>
+                        <div className="text-[10px] text-slate-400">90-Day Volume</div>
                         <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
                           {rec.recentArticles} articles
                         </div>

@@ -45,28 +45,40 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
     lastPostAgoDays = 0,
   } = metrics;
 
-  // Rule 1: Loud Exhaustion (high volume, low engaged reading)
-  const isHighVolume = recentArticles >= 12 || totalArticles >= 20;
+  // Strict Volume Floor: Feeds with < 15 articles in the 90-day window cannot cause
+  // triage exhaustion (protects low-frequency gems, quarterly essays, and specialist blogs).
+  if (recentArticles < 15 && errorCount < 10) {
+    return {
+      isRecommended: false,
+      fatigueScore: 0,
+      reasonKey: null,
+      reasonLabel: "Healthy",
+      reasonDescription: "Low publication volume preserves triage bandwidth.",
+    };
+  }
+
+  // Rule 1: Loud Exhaustion (high 90-day volume, low engaged reading, 0 saved)
+  const isHighVolume = recentArticles >= 25;
   const lowEngagedRate = totalArticles > 0 ? engagedCount / totalArticles : 0;
   const zeroOrNearZeroEngaged =
-    engagedCount === 0 || (totalArticles >= 15 && lowEngagedRate <= 0.07);
+    engagedCount === 0 || (totalArticles >= 20 && lowEngagedRate <= 0.07);
   const zeroStarred = starredCount === 0;
 
   if (isHighVolume && zeroOrNearZeroEngaged && zeroStarred) {
-    const volumeBonus = Math.min(Math.round(recentArticles * 1.5), 35);
+    const volumeBonus = Math.min(Math.round(recentArticles * 0.5), 35);
     const fatigueScore = Math.min(100, 65 + volumeBonus);
     return {
       isRecommended: true,
       fatigueScore,
       reasonKey: "loud_exhaustion",
       reasonLabel: "Loud Exhaustion",
-      reasonDescription: `${recentArticles > 0 ? `${recentArticles} recent articles` : `${totalArticles} total articles`} with only ${engagedCount} engaged read${engagedCount !== 1 ? "s" : ""} (${(lowEngagedRate * 100).toFixed(1)}%) and 0 saves. High triage burden with minimal reading payoff.`,
+      reasonDescription: `${recentArticles} articles in 90 days with only ${engagedCount} engaged read${engagedCount !== 1 ? "s" : ""} (${(lowEngagedRate * 100).toFixed(1)}%) and 0 saves. High triage burden with minimal reading payoff.`,
     };
   }
 
   // Rule 2: Pure Duplicate Wire (heavy duplication overlap)
   if (
-    duplicateStoryCount >= 4 &&
+    duplicateStoryCount >= 5 &&
     duplicateStoryCount / Math.max(recentArticles, 5) >= 0.45 &&
     engagedCount <= 1
   ) {
@@ -80,16 +92,16 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
     };
   }
 
-  // Rule 3: Skim & Flick Only (consistent quick dismissals)
+  // Rule 3: Skim & Flick Only (consistent quick dismissals on active feeds)
   const readEngagementRate = readCount > 0 ? engagedCount / readCount : 0;
   if (
-    totalArticles >= 10 &&
-    readCount >= 8 &&
+    recentArticles >= 20 &&
+    readCount >= 15 &&
     avgDwellSeconds < 10 &&
     readEngagementRate <= 0.08 &&
     starredCount === 0
   ) {
-    const fatigueScore = Math.min(85, 55 + Math.min(readCount / 3, 25));
+    const fatigueScore = Math.min(85, 55 + Math.min(recentArticles / 4, 25));
     return {
       isRecommended: true,
       fatigueScore,
@@ -99,21 +111,14 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
     };
   }
 
-  // Rule 4: Dormant / Broken
-  if (
-    errorCount >= 6 ||
-    (lastPostAgoDays >= 90 && totalArticles >= 5 && engagedCount === 0)
-  ) {
-    const fatigueScore = Math.min(80, 45 + Math.min(lastPostAgoDays / 10, 30));
+  // Rule 4: Persistent Errors Only (exempts quiet healthy feeds)
+  if (errorCount >= 10) {
     return {
       isRecommended: true,
-      fatigueScore,
+      fatigueScore: 75,
       reasonKey: "dormant_broken",
-      reasonLabel: "Dormant / Failing",
-      reasonDescription:
-        errorCount >= 6
-          ? `Feed has encountered ${errorCount} consecutive fetch errors: ${lastError || "Network failure"}`
-          : `Inactive for ${lastPostAgoDays} days with 0 active reading interest.`,
+      reasonLabel: "Failing Feed",
+      reasonDescription: `Feed has encountered ${errorCount} consecutive fetch errors: ${lastError || "Persistent network failure"}.`,
     };
   }
 

@@ -62,7 +62,7 @@ export interface FeedAuditResult {
  * that contribute to triage fatigue with minimal reading payoff.
  */
 export async function getFeedAuditRecommendations(): Promise<FeedAuditResult> {
-  const thirtyDaysAgoSec = Math.floor(Date.now() / 1000) - 30 * 86400;
+  const ninetyDaysAgoSec = Math.floor(Date.now() / 1000) - 90 * 86400;
 
   // 1. Fetch all non-synthetic feeds with aggregated statistics
   const feedStatsRows = db
@@ -80,7 +80,7 @@ export async function getFeedAuditRecommendations(): Promise<FeedAuditResult> {
       lastFetchedAt: feeds.lastFetchedAt,
       createdAt: feeds.createdAt,
       totalArticles: sql<number>`count(${feedItems.id})`,
-      recentArticles: sql<number>`count(case when ${feedItems.publishedAt} >= ${thirtyDaysAgoSec} or (${feedItems.publishedAt} is null and ${feedItems.createdAt} >= ${thirtyDaysAgoSec}) then 1 else null end)`,
+      recentArticles: sql<number>`count(case when ${feedItems.publishedAt} >= ${ninetyDaysAgoSec} or (${feedItems.publishedAt} is null and ${feedItems.createdAt} >= ${ninetyDaysAgoSec}) then 1 else null end)`,
       readCount: sql<number>`count(case when ${feedItems.isRead} = 1 then 1 else null end)`,
       engagedCount: sql<number>`count(case when ${feedItems.isEngagedRead} = 1 or ${feedItems.readDurationSeconds} >= 30 then 1 else null end)`,
       starredCount: sql<number>`count(case when ${feedItems.isStarred} = 1 then 1 else null end)`,
@@ -128,7 +128,7 @@ export async function getFeedAuditRecommendations(): Promise<FeedAuditResult> {
       .from(feedItems)
       .leftJoin(feeds, eq(feedItems.feedId, feeds.id))
       .where(
-        sql`(${feedItems.publishedAt} >= ${thirtyDaysAgoSec} OR (${feedItems.publishedAt} IS NULL AND ${feedItems.createdAt} >= ${thirtyDaysAgoSec}))`
+        sql`(${feedItems.publishedAt} >= ${ninetyDaysAgoSec} OR (${feedItems.publishedAt} IS NULL AND ${feedItems.createdAt} >= ${ninetyDaysAgoSec}))`
       )
       .orderBy(desc(feedItems.publishedAt))
       .limit(600)

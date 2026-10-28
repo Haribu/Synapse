@@ -18,35 +18,35 @@ describe("Feed Noise & Low-Signal Heuristic Evaluator", () => {
     expect(result.reasonKey).toBe("loud_exhaustion");
     expect(result.reasonLabel).toBe("Loud Exhaustion");
     expect(result.fatigueScore).toBeGreaterThanOrEqual(70);
-    expect(result.reasonDescription).toContain("25 recent articles");
+    expect(result.reasonDescription).toContain("25 articles in 90 days");
   });
 
   it("flags feeds with heavy duplication overlap against existing feeds", () => {
     const result = evaluateFeedNoise({
-      totalArticles: 15,
-      recentArticles: 10,
-      readCount: 5,
+      totalArticles: 25,
+      recentArticles: 20,
+      readCount: 15,
       engagedCount: 0,
-      flickedCount: 4,
+      flickedCount: 12,
       starredCount: 0,
       avgDwellSeconds: 8,
-      duplicateStoryCount: 6, // 60% duplicate rate
+      duplicateStoryCount: 10, // 50% duplicate rate
     });
 
     expect(result.isRecommended).toBe(true);
     expect(result.reasonKey).toBe("pure_duplicate");
     expect(result.reasonLabel).toBe("Redundant Wire");
     expect(result.fatigueScore).toBeGreaterThanOrEqual(60);
-    expect(result.reasonDescription).toContain("6 stories duplicate coverage");
+    expect(result.reasonDescription).toContain("10 stories duplicate coverage");
   });
 
   it("flags feeds with consistent skim-and-flick patterns without engagement", () => {
     const result = evaluateFeedNoise({
-      totalArticles: 14,
-      recentArticles: 6,
-      readCount: 10,
+      totalArticles: 30,
+      recentArticles: 24,
+      readCount: 20,
       engagedCount: 0,
-      flickedCount: 9,
+      flickedCount: 19,
       starredCount: 0,
       avgDwellSeconds: 7,
       duplicateStoryCount: 1,
@@ -68,14 +68,14 @@ describe("Feed Noise & Low-Signal Heuristic Evaluator", () => {
       starredCount: 0,
       avgDwellSeconds: 5,
       duplicateStoryCount: 0,
-      errorCount: 8,
+      errorCount: 12,
       lastError: "HTTP 502 Bad Gateway",
       lastPostAgoDays: 120,
     });
 
     expect(result.isRecommended).toBe(true);
     expect(result.reasonKey).toBe("dormant_broken");
-    expect(result.reasonLabel).toBe("Dormant / Failing");
+    expect(result.reasonLabel).toBe("Failing Feed");
     expect(result.fatigueScore).toBeGreaterThanOrEqual(50);
   });
 
