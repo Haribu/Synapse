@@ -5,6 +5,7 @@ import { desc, eq, sql, gte, and } from "drizzle-orm";
 import { isSponsoredContent } from "@/lib/utils/sponsored";
 import { isWeeklyRoundup } from "@/lib/utils/roundup";
 import { getLastSyncTelemetry } from "@/lib/services/sync-engine";
+import { getFeedAuditRecommendations } from "@/lib/services/feed-audit";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
@@ -297,6 +298,15 @@ export async function GET() {
       console.warn("Failed to compute queue clearance stats:", clearanceErr);
     }
 
+    // 6e. Feed Health & Low-Signal Audit Telemetry
+    let feedAuditStats = null;
+    try {
+      const auditResult = await getFeedAuditRecommendations();
+      feedAuditStats = auditResult.summary;
+    } catch (auditErr) {
+      console.warn("Failed to compute feed audit stats:", auditErr);
+    }
+
     // 7. Stats for Nerds: SQLite & Engine Telemetry
     let nerdStats = null;
     try {
@@ -449,6 +459,7 @@ export async function GET() {
         },
       },
       noiseStats,
+      feedAudit: feedAuditStats,
       dailyVelocity,
       nerdStats,
     });

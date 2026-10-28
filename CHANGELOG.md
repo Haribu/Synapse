@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-10-28
+
+### Added
+- **Feed Signal vs. Noise Audit & Pruning Recommendations Engine:**
+  - Added deterministic heuristic evaluator `evaluateFeedNoise` (`src/lib/utils/feed-noise.ts`) and background audit service `getFeedAuditRecommendations` (`src/lib/services/feed-audit.ts`) to identify loud, low-signal, or duplicated feeds causing triage fatigue.
+  - Classified candidates into four diagnostic categories:
+    - **Loud Exhaustion:** High publication volume ($\ge 12$ recent or $\ge 20$ total items) with 0 engaged reads ($\ge 30$s dwell) and 0 stars.
+    - **Redundant Wire:** High story duplication overlap ($\ge 45\%$) where other outlets were read instead.
+    - **Skim & Flick Only:** Consistent quick dismissals ($< 12$s average dwell) without depth.
+    - **Dormant / Failing:** Inactive for $\ge 90$ days or $\ge 6$ consecutive fetch errors.
+  - Added `GET /api/feeds/audit` endpoint exposing candidate diagnostic verdicts, fatigue index scores (0–100), dwell statistics, and managed exceptions.
+  - Added dedicated **"Feed Audit"** tab in `FeedManagerView` (`src/components/FeedManagerView.tsx`) with real-time candidate badges, full diagnostic evidence cards, one-click Unsubscribe, Mute/Pause Sync, and Whitelist (Keep) actions.
+  - Added **Feed Signal vs. Noise Audit** telemetry card in `StatsView` (`src/components/StatsView.tsx`) with deep-link navigation directly into the Feed Manager Audit tab.
+  - Added `isMuted` and `isAuditWhitelisted` columns to `feeds` SQLite table with automatic startup migrations (`src/lib/db/index.ts` and `src/lib/db/schema.ts`).
+  - Added muted feed exemption in `syncSingleFeed` (`src/lib/services/sync-engine.ts`) to immediately bypass background network fetching for muted subscriptions.
+  - Added comprehensive unit tests in `src/lib/utils/feed-noise.test.ts` verifying all diagnostic branches, specialist blog exemptions, and fatigue score boundaries.
+
 ## [1.1.5] - 2026-10-28
 
 ### Fixed

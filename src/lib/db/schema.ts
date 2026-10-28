@@ -11,6 +11,8 @@ export const feeds = sqliteTable(
     feedType: text("feed_type").default("rss"), // 'rss' | 'atom' | 'youtube' | 'newsletter'
     editorialType: text("editorial_type").default("independent"), // 'independent' | 'vendor' | 'community' | 'official' | 'news'
     autoFullFetch: integer("auto_full_fetch", { mode: "boolean" }).default(false),
+    isMuted: integer("is_muted", { mode: "boolean" }).default(false),
+    isAuditWhitelisted: integer("is_audit_whitelisted", { mode: "boolean" }).default(false),
     iconUrl: text("icon_url"),
     lastFetchedAt: integer("last_fetched_at", { mode: "timestamp" }),
     etag: text("etag"),

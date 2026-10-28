@@ -56,6 +56,9 @@ export default function HomePage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   const [selectedView, setSelectedView] = useState<View>("unread");
+  const [feedManagerTab, setFeedManagerTab] = useState<
+    "all" | "audit" | "empty" | "unreachable" | "autofetch" | "duplicates" | "logs"
+  >("all");
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -770,8 +773,11 @@ export default function HomePage() {
               <span className="font-bold text-sm ml-2">Stats &amp; Analytics</span>
             </div>
             <StatsView
-              onNavigateView={(view) => {
+              onNavigateView={(view, tab) => {
                 setSelectedView(view);
+                if (view === "feed_manager" && tab) {
+                  setFeedManagerTab(tab as any);
+                }
                 setSelectedItemId(null);
               }}
             />
@@ -788,6 +794,7 @@ export default function HomePage() {
               <span className="font-bold text-sm ml-2">Manage Feeds</span>
             </div>
             <FeedManagerView
+              initialTab={feedManagerTab}
               onFeedListChanged={() => {
                 refreshFeedsAndBoards();
                 refreshItems();

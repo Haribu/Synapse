@@ -20,6 +20,8 @@ export async function GET() {
         feedType: feeds.feedType,
         editorialType: feeds.editorialType,
         autoFullFetch: feeds.autoFullFetch,
+        isMuted: feeds.isMuted,
+        isAuditWhitelisted: feeds.isAuditWhitelisted,
         errorCount: feeds.errorCount,
         lastError: feeds.lastError,
         lastFetchedAt: feeds.lastFetchedAt,

@@ -221,6 +221,59 @@ POST /api/feeds/sync-all
 
 ---
 
+### Feed Signal vs. Noise Audit & Recommendations
+
+Audit all subscribed feeds to identify loud volume exhaustion, syndication duplication, and low reading dwell time.
+
+```http
+GET /api/feeds/audit
+```
+
+#### Example Response
+
+```json
+{
+  "recommendations": [
+    {
+      "feedId": "feed-123",
+      "feedTitle": "Tech Daily Wire",
+      "feedUrl": "https://example.com/rss",
+      "category": "Technology",
+      "editorialType": "news",
+      "isMuted": false,
+      "isAuditWhitelisted": false,
+      "totalArticles": 42,
+      "recentArticles": 28,
+      "readCount": 25,
+      "engagedCount": 0,
+      "flickedCount": 20,
+      "starredCount": 0,
+      "totalDwellSeconds": 140,
+      "avgDwellSeconds": 5,
+      "fatigueScore": 88,
+      "reasonKey": "loud_exhaustion",
+      "reasonLabel": "Loud Exhaustion",
+      "reasonDescription": "28 recent articles with 0 engaged reads and 0 saves. High triage burden with no reading value.",
+      "duplicateStoryCount": 3
+    }
+  ],
+  "summary": {
+    "totalAudited": 45,
+    "recommendedCount": 1,
+    "loudExhaustionCount": 1,
+    "duplicateCount": 0,
+    "dormantCount": 0,
+    "mutedCount": 0,
+    "whitelistedCount": 0,
+    "totalWastedArticles": 28
+  },
+  "mutedFeeds": [],
+  "whitelistedFeeds": []
+}
+```
+
+---
+
 ## 4. Collaborative Intelligence & Digests (`/api/digest`)
 
 ### Generate Work / Team Digest

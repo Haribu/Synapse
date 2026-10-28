@@ -75,6 +75,18 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
     };
   }
 
+  // Exempt muted feeds from background fetching
+  if (feed.isMuted) {
+    return {
+      feedId,
+      title: feed.title,
+      healthy: true,
+      status: "not_modified",
+      newItemsCount: 0,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
   // Exempt synthetic local welcome feed from remote HTTP fetching
   if (feed.id === "synapse-welcome" || feed.feedUrl.includes("synapse.local")) {
     const now = new Date();

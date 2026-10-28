@@ -23,6 +23,11 @@ import {
   BookmarkCheck,
   ArrowRight,
   Download,
+  TrendingDown,
+  VolumeX,
+  Volume2,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 
 interface FeedItem {
@@ -34,6 +39,8 @@ interface FeedItem {
   feedType: string;
   editorialType?: string;
   autoFullFetch: boolean;
+  isMuted?: boolean;
+  isAuditWhitelisted?: boolean;
   errorCount: number;
   lastError: string | null;
   lastFetchedAt: string | null;
@@ -124,9 +131,14 @@ interface LogEntry {
 interface FeedManagerViewProps {
   onFeedListChanged?: () => void;
   onSelectFeed?: (feedId: string) => void;
+  initialTab?: "all" | "audit" | "empty" | "unreachable" | "autofetch" | "duplicates" | "logs";
 }
 
-export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManagerViewProps) {
+export function FeedManagerView({
+  onFeedListChanged,
+  onSelectFeed,
+  initialTab = "all",
+}: FeedManagerViewProps) {
   const [feeds, setFeeds] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -136,11 +148,22 @@ export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManager
     "name"
   );
   const [activeTab, setActiveTab] = useState<
-    "all" | "empty" | "unreachable" | "autofetch" | "duplicates" | "logs"
-  >("all");
+    "all" | "audit" | "empty" | "unreachable" | "autofetch" | "duplicates" | "logs"
+  >(initialTab);
   const [duplicateGroups, setDuplicateGroups] = useState<any[]>([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(false);
   const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null);
+
+  // Feed Audit state
+  const [auditData, setAuditData] = useState<any>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditActionInProgressFeedId, setAuditActionInProgressFeedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Health check & sync states
   const [checkingFeedId, setCheckingFeedId] = useState<string | null>(null);
@@ -394,9 +417,84 @@ export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManager
     }
   };
 
+  const loadAuditData = async () => {
+    setAuditLoading(true);
+    try {
+      const res = await fetch("/api/feeds/audit");
+      const data = await res.json();
+      if (data && data.recommendations) {
+        setAuditData(data);
+      }
+    } catch (err) {
+      console.error("Failed to load feed audit recommendations", err);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleToggleMute = async (feedId: string, currentMuted: boolean) => {
+    setAuditActionInProgressFeedId(feedId);
+    try {
+      const res = await fetch(`/api/feeds/${feedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isMuted: !currentMuted }),
+      });
+      if (res.ok) {
+        await loadAuditData();
+        await loadFeeds();
+        if (onFeedListChanged) onFeedListChanged();
+      }
+    } catch (err) {
+      console.error("Failed to toggle mute state", err);
+    } finally {
+      setAuditActionInProgressFeedId(null);
+    }
+  };
+
+  const handleToggleWhitelist = async (feedId: string, currentWhitelisted: boolean) => {
+    setAuditActionInProgressFeedId(feedId);
+    try {
+      const res = await fetch(`/api/feeds/${feedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAuditWhitelisted: !currentWhitelisted }),
+      });
+      if (res.ok) {
+        await loadAuditData();
+        await loadFeeds();
+        if (onFeedListChanged) onFeedListChanged();
+      }
+    } catch (err) {
+      console.error("Failed to toggle audit whitelist", err);
+    } finally {
+      setAuditActionInProgressFeedId(null);
+    }
+  };
+
+  const handleUnsubscribeAudit = async (feedId: string, title: string) => {
+    if (!confirm(`Are you sure you want to unsubscribe from "${title}" and remove its articles?`)) {
+      return;
+    }
+    setAuditActionInProgressFeedId(feedId);
+    try {
+      const res = await fetch(`/api/feeds/${feedId}`, { method: "DELETE" });
+      if (res.ok) {
+        await loadAuditData();
+        await loadFeeds();
+        if (onFeedListChanged) onFeedListChanged();
+      }
+    } catch (err) {
+      console.error("Failed to unsubscribe feed", err);
+    } finally {
+      setAuditActionInProgressFeedId(null);
+    }
+  };
+
   useEffect(() => {
     loadFeeds();
     loadDuplicates();
+    loadAuditData();
   }, []);
 
   useEffect(() => {
@@ -406,6 +504,8 @@ export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManager
       return () => clearInterval(interval);
     } else if (activeTab === "duplicates") {
       loadDuplicates();
+    } else if (activeTab === "audit") {
+      loadAuditData();
     }
   }, [activeTab]);
 
@@ -684,6 +784,24 @@ export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManager
             </button>
 
             <button
+              onClick={() => setActiveTab("audit")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                activeTab === "audit"
+                  ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/40 font-semibold"
+                  : (auditData?.summary?.recommendedCount || 0) > 0
+                    ? "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-semibold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
+            >
+              <TrendingDown className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+              <span>
+                Feed Audit{" "}
+                {(auditData?.summary?.recommendedCount || 0) > 0 &&
+                  `(${auditData.summary.recommendedCount})`}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("empty")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 activeTab === "empty"
@@ -812,7 +930,307 @@ export function FeedManagerView({ onFeedListChanged, onSelectFeed }: FeedManager
       </div>
 
       {/* Main Content: Feeds Table vs Activity Logs */}
-      {activeTab === "logs" ? (
+      {activeTab === "audit" ? (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="p-5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                <h2 className="text-sm font-bold text-rose-950 dark:text-rose-200">
+                  Feed Signal vs. Noise Audit
+                </h2>
+                {auditData?.summary && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-200/80 dark:bg-rose-900/80 text-rose-800 dark:text-rose-200">
+                    {auditData.summary.recommendedCount} Candidate
+                    {auditData.summary.recommendedCount !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-rose-800/80 dark:text-rose-300/80 max-w-2xl leading-relaxed">
+                Synapse audits your subscriptions against genuine dwell time (≥30s reading),
+                flick/skip rates, and syndication duplication. Feeds below generate high triage
+                overhead with minimal reading payoff.
+              </p>
+            </div>
+            <button
+              onClick={loadAuditData}
+              disabled={auditLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100/50 dark:hover:bg-rose-950/50 shadow-sm shrink-0 self-start md:self-auto"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${auditLoading ? "animate-spin" : ""}`} />
+              <span>Re-run Audit</span>
+            </button>
+          </div>
+
+          {/* Audit Cards or Empty State */}
+          {auditLoading ? (
+            <div className="p-12 text-center text-xs text-slate-400 dark:text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-rose-500" />
+              <span>Analyzing reading dwell time and article duplication...</span>
+            </div>
+          ) : !auditData || auditData.recommendations.length === 0 ? (
+            <div className="p-12 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-xs text-slate-500 space-y-2">
+              <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
+              <div className="font-semibold text-slate-800 dark:text-slate-200">
+                Your Reading Diet is High-Signal
+              </div>
+              <p className="text-slate-400 max-w-md mx-auto">
+                None of your subscribed feeds currently trigger loud volume exhaustion or
+                zero-engagement thresholds.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {auditData.recommendations.map((rec: any) => {
+                const isWorking = auditActionInProgressFeedId === rec.feedId;
+                const badgeColor =
+                  rec.reasonKey === "loud_exhaustion"
+                    ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800"
+                    : rec.reasonKey === "pure_duplicate"
+                      ? "bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                      : rec.reasonKey === "skim_only"
+                        ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700";
+
+                return (
+                  <div
+                    key={rec.feedId}
+                    className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">
+                            {rec.feedTitle}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeColor}`}
+                          >
+                            {rec.reasonLabel}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {rec.category}
+                          </span>
+                          {rec.isMuted && (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                              Muted
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] font-mono text-slate-400 truncate max-w-lg">
+                          {rec.feedUrl}
+                        </div>
+                      </div>
+
+                      {/* Fatigue score indicator */}
+                      <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                        <div className="text-right">
+                          <div className="text-[10px] uppercase font-bold text-slate-400">
+                            Fatigue Index
+                          </div>
+                          <div className="text-sm font-bold text-rose-600 dark:text-rose-400">
+                            {rec.fatigueScore} / 100
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Diagnostics & Evidence Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-950/60 p-3 rounded-lg border border-slate-100 dark:border-slate-800 text-xs">
+                      <div>
+                        <div className="text-[10px] text-slate-400">30-Day Volume</div>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {rec.recentArticles} articles
+                        </div>
+                        <div className="text-[9px] text-slate-400">
+                          {rec.totalArticles} all-time
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Engaged Reads (≥30s)</div>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {rec.engagedCount}
+                        </div>
+                        <div className="text-[9px] text-slate-400">
+                          {rec.totalArticles > 0
+                            ? Math.round((rec.engagedCount / rec.totalArticles) * 100)
+                            : 0}
+                          % engagement
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Avg Reading Dwell</div>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {rec.avgDwellSeconds}s
+                        </div>
+                        <div className="text-[9px] text-slate-400">
+                          {rec.flickedCount} quick dismissals
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Saved / Starred</div>
+                        <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {rec.starredCount}
+                        </div>
+                        <div className="text-[9px] text-slate-400">
+                          {rec.duplicateStoryCount > 0
+                            ? `${rec.duplicateStoryCount} duplicate stories`
+                            : "0 saved"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Human Explanation */}
+                    <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-amber-50/50 dark:bg-amber-950/20 p-2.5 rounded-lg border border-amber-200/50 dark:border-amber-900/30">
+                      <span className="font-semibold text-amber-900 dark:text-amber-300">
+                        Diagnosis:{" "}
+                      </span>
+                      {rec.reasonDescription}
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                      <div className="text-[11px] text-slate-400">
+                        {rec.isMuted
+                          ? "Fetching is currently paused for this feed."
+                          : "Choose an action to reduce triage noise:"}
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        {/* Whitelist / Keep Button */}
+                        <button
+                          onClick={() => handleToggleWhitelist(rec.feedId, false)}
+                          disabled={isWorking}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1.5"
+                          title="Exempt this feed from future audit recommendations"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Keep Feed</span>
+                        </button>
+
+                        {/* Mute / Unmute Button */}
+                        <button
+                          onClick={() => handleToggleMute(rec.feedId, rec.isMuted)}
+                          disabled={isWorking}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+                            rec.isMuted
+                              ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
+                              : "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border-amber-200 dark:border-amber-800/60"
+                          }`}
+                          title={
+                            rec.isMuted
+                              ? "Resume background synchronization"
+                              : "Pause background sync without deleting history"
+                          }
+                        >
+                          {rec.isMuted ? (
+                            <>
+                              <Volume2 className="w-3.5 h-3.5" />
+                              <span>Unmute</span>
+                            </>
+                          ) : (
+                            <>
+                              <VolumeX className="w-3.5 h-3.5" />
+                              <span>Mute Sync</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Unsubscribe Button */}
+                        <button
+                          onClick={() => handleUnsubscribeAudit(rec.feedId, rec.feedTitle)}
+                          disabled={isWorking}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                          title="Unsubscribe and remove all articles"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Unsubscribe</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Managed Feed Exceptions Drawer */}
+          {(auditData?.mutedFeeds?.length > 0 || auditData?.whitelistedFeeds?.length > 0) && (
+            <div className="mt-8 border-t border-slate-200 dark:border-slate-800 pt-6 space-y-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Managed Feed Exceptions
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Muted Feeds */}
+                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <VolumeX className="w-3.5 h-3.5 text-amber-500" />
+                      Muted Subscriptions ({auditData?.mutedFeeds?.length || 0})
+                    </span>
+                  </div>
+                  {auditData?.mutedFeeds?.length === 0 ? (
+                    <div className="text-[11px] text-slate-400">No feeds are currently muted.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {auditData.mutedFeeds.map((mf: any) => (
+                        <div key={mf.id} className="py-2 flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              {mf.title}
+                            </span>
+                            <span className="text-[10px] text-slate-400 ml-2">({mf.category})</span>
+                          </div>
+                          <button
+                            onClick={() => handleToggleMute(mf.id, true)}
+                            className="px-2 py-0.5 rounded text-[11px] font-semibold text-amber-600 hover:text-amber-700 border border-amber-200 dark:border-amber-800 shrink-0"
+                          >
+                            Unmute
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Whitelisted Feeds */}
+                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                      Audit Whitelist ({auditData?.whitelistedFeeds?.length || 0})
+                    </span>
+                  </div>
+                  {auditData?.whitelistedFeeds?.length === 0 ? (
+                    <div className="text-[11px] text-slate-400">
+                      No feeds are currently whitelisted.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {auditData.whitelistedFeeds.map((wf: any) => (
+                        <div key={wf.id} className="py-2 flex items-center justify-between gap-2">
+                          <div className="truncate">
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
+                              {wf.title}
+                            </span>
+                            <span className="text-[10px] text-slate-400 ml-2">({wf.category})</span>
+                          </div>
+                          <button
+                            onClick={() => handleToggleWhitelist(wf.id, true)}
+                            className="px-2 py-0.5 rounded text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : activeTab === "logs" ? (
         <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">

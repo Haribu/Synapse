@@ -32,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const body = await req.json();
-    const { title, category, editorialType, autoFullFetch, feedUrl } = body;
+    const { title, category, editorialType, autoFullFetch, feedUrl, isMuted, isAuditWhitelisted } = body;
 
     const updates: Record<string, any> = {};
     if (typeof title === "string" && title.trim().length > 0) updates.title = title.trim();
@@ -41,6 +41,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (typeof editorialType === "string" && editorialType.trim().length > 0)
       updates.editorialType = editorialType.trim();
     if (typeof autoFullFetch === "boolean") updates.autoFullFetch = autoFullFetch;
+    if (typeof isMuted === "boolean") updates.isMuted = isMuted;
+    if (typeof isAuditWhitelisted === "boolean") updates.isAuditWhitelisted = isAuditWhitelisted;
     if (typeof feedUrl === "string" && feedUrl.trim().length > 0) updates.feedUrl = feedUrl.trim();
 
     db.update(feeds).set(updates).where(eq(feeds.id, id)).run();

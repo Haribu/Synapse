@@ -100,6 +100,16 @@ interface StatsData {
     readCount: number;
     totalSuppressed: number;
   };
+  feedAudit?: {
+    totalAudited: number;
+    recommendedCount: number;
+    loudExhaustionCount: number;
+    duplicateCount: number;
+    dormantCount: number;
+    mutedCount: number;
+    whitelistedCount: number;
+    totalWastedArticles: number;
+  };
   dailyVelocity: {
     date: string;
     count: number;
@@ -159,7 +169,10 @@ interface StatsData {
 }
 
 export interface StatsViewProps {
-  onNavigateView?: (view: "unread" | "starred" | "reading_list" | "all" | "work") => void;
+  onNavigateView?: (
+    view: "unread" | "starred" | "reading_list" | "all" | "work" | "feed_manager",
+    tab?: string
+  ) => void;
 }
 
 export function StatsView({ onNavigateView }: StatsViewProps = {}) {
@@ -717,6 +730,68 @@ export function StatsView({ onNavigateView }: StatsViewProps = {}) {
               <div className="text-[9px] text-slate-500">Filtered from unread view</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Feed Signal & Low-Value Audit Telemetry */}
+      {data.feedAudit && (
+        <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 shadow-sm mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-rose-400" />
+              Feed Signal vs. Noise Audit
+            </span>
+            <span className="text-xs text-slate-500 font-mono">
+              {data.feedAudit.totalAudited} subscriptions audited
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 mb-4">
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+              <div className="text-[10px] text-slate-400">Loud / Low-Signal Feeds</div>
+              <div className="text-lg font-bold text-rose-400 mt-0.5">
+                {data.feedAudit.recommendedCount}
+              </div>
+              <div className="text-[9px] text-slate-500">
+                {data.feedAudit.recommendedCount === 0
+                  ? "All feeds healthy & engaged"
+                  : "Feeds recommended for review"}
+              </div>
+            </div>
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+              <div className="text-[10px] text-slate-400">High Triage Exhaustion</div>
+              <div className="text-lg font-bold text-amber-400 mt-0.5">
+                {data.feedAudit.loudExhaustionCount}
+              </div>
+              <div className="text-[9px] text-slate-500">High volume · 0 engaged reads</div>
+            </div>
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+              <div className="text-[10px] text-slate-400">Redundant Wire Overlap</div>
+              <div className="text-lg font-bold text-blue-400 mt-0.5">
+                {data.feedAudit.duplicateCount}
+              </div>
+              <div className="text-[9px] text-slate-500">Syndicated across multiple feeds</div>
+            </div>
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+              <div className="text-[10px] text-slate-400">Unproductive Articles</div>
+              <div className="text-lg font-bold text-white mt-0.5">
+                {data.feedAudit.totalWastedArticles}
+              </div>
+              <div className="text-[9px] text-slate-500">Articles triaged with 0 reading depth</div>
+            </div>
+          </div>
+          {onNavigateView && (
+            <button
+              onClick={() => onNavigateView("feed_manager", "audit")}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all group"
+            >
+              <span>
+                {data.feedAudit.recommendedCount > 0
+                  ? `Review ${data.feedAudit.recommendedCount} Recommended Feed${data.feedAudit.recommendedCount > 1 ? "s" : ""} in Feed Manager`
+                  : "Open Feed Manager Audit"}
+              </span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          )}
         </div>
       )}
 

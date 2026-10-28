@@ -98,6 +98,12 @@ try {
   sqlite.exec("ALTER TABLE feeds ADD COLUMN editorial_type TEXT DEFAULT 'independent';");
 } catch {}
 try {
+  sqlite.exec("ALTER TABLE feeds ADD COLUMN is_muted INTEGER DEFAULT 0;");
+} catch {}
+try {
+  sqlite.exec("ALTER TABLE feeds ADD COLUMN is_audit_whitelisted INTEGER DEFAULT 0;");
+} catch {}
+try {
   sqlite.exec("ALTER TABLE feed_items ADD COLUMN is_engaged_read INTEGER DEFAULT 0;");
 } catch {}
 try {
