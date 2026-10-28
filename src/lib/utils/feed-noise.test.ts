@@ -114,4 +114,53 @@ describe("Feed Noise & Low-Signal Heuristic Evaluator", () => {
     expect(result.isRecommended).toBe(false);
     expect(result.reasonKey).toBeNull();
   });
+
+  it("flags The Hacker News real-world profile as Loud Exhaustion", () => {
+    const result = evaluateFeedNoise({
+      totalArticles: 261,
+      recentArticles: 259,
+      readCount: 245,
+      engagedCount: 10, // 3.8% engagement
+      flickedCount: 180,
+      starredCount: 0,
+      avgDwellSeconds: 32,
+      duplicateStoryCount: 12,
+    });
+
+    expect(result.isRecommended).toBe(true);
+    expect(result.reasonKey).toBe("loud_exhaustion");
+    expect(result.fatigueScore).toBe(100);
+  });
+
+  it("flags Dark Reading real-world profile as Loud Exhaustion / Skim & Flick", () => {
+    const result = evaluateFeedNoise({
+      totalArticles: 135,
+      recentArticles: 110,
+      readCount: 130,
+      engagedCount: 9, // 6.7% engagement
+      flickedCount: 110,
+      starredCount: 0,
+      avgDwellSeconds: 5, // 5s avg dwell!
+      duplicateStoryCount: 8,
+    });
+
+    expect(result.isRecommended).toBe(true);
+    expect(["loud_exhaustion", "skim_only"]).toContain(result.reasonKey!);
+    expect(result.fatigueScore).toBeGreaterThanOrEqual(80);
+  });
+
+  it("keeps BleepingComputer healthy due to deep reading dwell and starred saves", () => {
+    const result = evaluateFeedNoise({
+      totalArticles: 197,
+      recentArticles: 197,
+      readCount: 185,
+      engagedCount: 19, // 9.6% engagement
+      flickedCount: 40,
+      starredCount: 1,
+      avgDwellSeconds: 206, // 3.4 mins avg dwell!
+      duplicateStoryCount: 5,
+    });
+
+    expect(result.isRecommended).toBe(false);
+  });
 });

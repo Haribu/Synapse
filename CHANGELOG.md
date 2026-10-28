@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-10-28
+
+### Fixed
+- **Feed Audit SQLite Timestamp Type Binding Fix (`/api/feeds/audit`):**
+  - Resolved `SQLite3 can only bind numbers, strings, bigints, buffers, and null` error when querying 30-day article velocity in `src/lib/services/feed-audit.ts` by passing integer seconds timestamp (`Math.floor(Date.now() / 1000) - 30 * 86400`) instead of raw JavaScript `Date` object.
+- **Calibrated Fatigue & Noise Heuristics (`feed-noise.ts`):**
+  - Calibrated Loud Exhaustion threshold to $\le 7\%$ engaged read rate for high-volume feeds ($\ge 20$ articles), accurately identifying feeds like **The Hacker News** (259 articles, 3.8% engaged reads, 0 saves).
+  - Refined Skim & Flick threshold to capture feeds with critically low reading dwell time ($< 10$s average across $\ge 8$ reads, $\le 8\%$ engaged), accurately identifying feeds like **Dark Reading** (110 articles, 5s average dwell time, 0 saves).
+  - Preserved healthy status for feeds with high engaged dwell times and saved articles like **BleepingComputer** (206s average dwell, 1 save) and **The Register** (30s average dwell, 1 save).
+
 ## [1.2.0] - 2026-10-28
 
 ### Added

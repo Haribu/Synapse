@@ -1,4 +1,4 @@
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.2.0";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.2.1";
 export const GIT_COMMIT = process.env.NEXT_PUBLIC_GIT_COMMIT || "0e5f32b";
 export const BUILD_DATE = process.env.NEXT_PUBLIC_BUILD_DATE || "2026-10-28";
 export const COPYRIGHT_YEAR = "2026";

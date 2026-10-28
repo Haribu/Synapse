@@ -45,10 +45,11 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
     lastPostAgoDays = 0,
   } = metrics;
 
-  // Rule 1: Loud Exhaustion (high volume, 0 or near 0 engaged reading)
+  // Rule 1: Loud Exhaustion (high volume, low engaged reading)
   const isHighVolume = recentArticles >= 12 || totalArticles >= 20;
+  const lowEngagedRate = totalArticles > 0 ? engagedCount / totalArticles : 0;
   const zeroOrNearZeroEngaged =
-    engagedCount === 0 || (totalArticles >= 15 && engagedCount / totalArticles <= 0.04);
+    engagedCount === 0 || (totalArticles >= 15 && lowEngagedRate <= 0.07);
   const zeroStarred = starredCount === 0;
 
   if (isHighVolume && zeroOrNearZeroEngaged && zeroStarred) {
@@ -59,7 +60,7 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
       fatigueScore,
       reasonKey: "loud_exhaustion",
       reasonLabel: "Loud Exhaustion",
-      reasonDescription: `${recentArticles > 0 ? `${recentArticles} recent articles` : `${totalArticles} total articles`} with 0 engaged reads and 0 saves. High triage burden with no reading value.`,
+      reasonDescription: `${recentArticles > 0 ? `${recentArticles} recent articles` : `${totalArticles} total articles`} with only ${engagedCount} engaged read${engagedCount !== 1 ? "s" : ""} (${(lowEngagedRate * 100).toFixed(1)}%) and 0 saves. High triage burden with minimal reading payoff.`,
     };
   }
 
@@ -80,20 +81,21 @@ export function evaluateFeedNoise(metrics: FeedNoiseMetricsInput): FeedNoiseEval
   }
 
   // Rule 3: Skim & Flick Only (consistent quick dismissals)
+  const readEngagementRate = readCount > 0 ? engagedCount / readCount : 0;
   if (
     totalArticles >= 10 &&
-    (flickedCount >= 6 || readCount >= 8) &&
-    avgDwellSeconds < 12 &&
-    engagedCount === 0 &&
+    readCount >= 8 &&
+    avgDwellSeconds < 10 &&
+    readEngagementRate <= 0.08 &&
     starredCount === 0
   ) {
-    const fatigueScore = Math.min(85, 50 + flickedCount * 4);
+    const fatigueScore = Math.min(85, 55 + Math.min(readCount / 3, 25));
     return {
       isRecommended: true,
       fatigueScore,
       reasonKey: "skim_only",
       reasonLabel: "Skim & Flick Only",
-      reasonDescription: `Average reading dwell is only ${avgDwellSeconds}s. Articles are consistently flicked away without detailed reading.`,
+      reasonDescription: `Average reading dwell is only ${avgDwellSeconds}s across ${readCount} triaged items (${(readEngagementRate * 100).toFixed(1)}% engaged). Stories are flicked away without detailed reading.`,
     };
   }
 
