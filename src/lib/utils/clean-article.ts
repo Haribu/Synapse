@@ -128,6 +128,12 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)(?:\[Video \d+\]\([^\)]*\)\s*\n*)+/gi, "\n");
 
+  // 2g. Remap Cloudflare-blocked Marginal Revolution image mirrors to unblocked original source (Adam Nash Census chart)
+  md = md.replace(
+    /https?:\/\/marginalrevolution\.com\/wp-content\/uploads\/2026\/10\/us-household-median-net-worth-by-age-2024-3\.webp/g,
+    "https://adamnash.blog/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.jpg"
+  );
+
   // 3. Strip known Cookie / Tracker preferences blocks
   md = md.replace(
     /(?:Manage your tracker preferences|We use cookies and similar tracking technologies|Targeted advertising cookies and similar trackers|We value your privacy|This website uses cookies)[\s\S]*?(?:Consent powered by [^\n]+|Save\b|Accept all cookies|Reject all cookies|Cookie Policy)/gi,
@@ -795,6 +801,18 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
   html = html.replace(
     /<img[^>]*src=["'](?:blob:http:\/\/localhost\/|https?:\/\/(?:t\.co|analytics\.twitter\.com|bat\.bing\.com|ad\.|doubleclick|google-analytics|stats\.wp\.com|pixel\.).*?)["'][^>]*>/gi,
     ""
+  );
+
+  // 4b. Enforce referrerpolicy="no-referrer" on all article <img> tags to bypass cross-origin hotlink protections
+  html = html.replace(
+    /<img\b(?![^>]*\breferrerpolicy\b)([^>]*?)(\/?>)/gi,
+    '<img$1 referrerpolicy="no-referrer"$2>'
+  );
+
+  // 4c. Remap Cloudflare-blocked Marginal Revolution image mirrors to unblocked original source (Adam Nash Census chart)
+  html = html.replace(
+    /https?:\/\/marginalrevolution\.com\/wp-content\/uploads\/2026\/10\/us-household-median-net-worth-by-age-2024-3\.webp/g,
+    "https://adamnash.blog/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.jpg"
   );
 
   // 5. Strip Jina / crawler metadata headers

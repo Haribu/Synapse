@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2026-10-29
+
+### Fixed
+- **Resolved Cross-Origin Image Suppression & Broken Asset Ergonomics:**
+  - Enforced `referrerpolicy="no-referrer"` across all article `<img>` elements in `cleanArticleHtml` to bypass CDN hotlink and referer blocks on third-party publishers (WordPress, Substack, Medium).
+  - Remapped Cloudflare-blocked Marginal Revolution image mirrors of Adam Nash's Census wealth chart (`us-household-median-net-worth-by-age-2024-3.webp` ➔ `.jpg`) to the unblocked original source across both HTML and Markdown cleaners.
+  - Implemented an editorial broken-image fallback card with a direct `"Open original image ↗"` link in `ReaderView.tsx` so users are never left with broken or missing media.
+  - Added in-place hygiene rehydration in `sync-engine.ts` targeting affected items.
+
 ## [1.2.2] - 2026-10-28
 
 ### Changed

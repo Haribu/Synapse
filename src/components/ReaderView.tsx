@@ -303,6 +303,46 @@ export function ReaderView({
       setLinkMenu(null);
     };
 
+    const handleImageError = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && target.tagName && target.tagName.toLowerCase() === "img") {
+        const img = target as HTMLImageElement;
+        if (img.dataset.hasFailed) return;
+        img.dataset.hasFailed = "true";
+
+        const wrapper = document.createElement("div");
+        wrapper.className =
+          "my-4 p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs select-none";
+
+        const infoDiv = document.createElement("div");
+        infoDiv.className = "flex items-center gap-2.5 min-w-0";
+        infoDiv.innerHTML = `
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div class="truncate">
+            <span class="font-medium text-slate-800 dark:text-slate-200 block truncate">${img.alt ? img.alt : "Embedded article image"}</span>
+            <span class="text-slate-500 dark:text-slate-400 text-[11px] block truncate">Image blocked or unavailable from origin host</span>
+          </div>
+        `;
+
+        const link = document.createElement("a");
+        link.href = img.src;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className =
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 font-medium transition-colors shrink-0 shadow-sm";
+        link.innerHTML = `<span>Open original image</span> <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>`;
+
+        wrapper.appendChild(infoDiv);
+        wrapper.appendChild(link);
+        img.replaceWith(wrapper);
+      }
+    };
+
+    el.addEventListener("error", handleImageError, true);
     el.addEventListener("contextmenu", handleContextMenu);
     el.addEventListener("touchstart", handleTouchStart, { passive: true });
     el.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -314,6 +354,7 @@ export function ReaderView({
 
     return () => {
       cancelTouch();
+      el.removeEventListener("error", handleImageError, true);
       el.removeEventListener("contextmenu", handleContextMenu);
       el.removeEventListener("touchstart", handleTouchStart);
       el.removeEventListener("touchmove", handleTouchMove);

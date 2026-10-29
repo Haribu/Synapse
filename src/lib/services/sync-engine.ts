@@ -728,6 +728,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     sql`${feedItems.author} LIKE '%- Articles%'`,
     sql`${feedItems.snippet} LIKE '%{padding%' OR ${feedItems.snippet} LIKE '%@media%'`,
     sql`${feedItems.fullContentHtml} LIKE '%> referrerpolicy=%' OR ${feedItems.fullContentHtml} LIKE '%<div class="relative"<iframe%'`,
+    sql`${feedItems.fullContentHtml} LIKE '%us-household-median-net-worth-by-age-2024-3%'`,
     sql`${feedItems.fullContentMarkdown} LIKE '%' || char(10) || '!' || char(10) || '%'`,
     sql`${feedItems.fullContentMarkdown} LIKE '%269x44.svg%' OR ${feedItems.fullContentMarkdown} LIKE '%31-bligh.svg%'`,
     sql`${feedItems.fullContentMarkdown} IS NULL AND length(${feedItems.fullContentHtml}) > 200`,

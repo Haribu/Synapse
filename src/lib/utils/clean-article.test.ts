@@ -272,4 +272,23 @@ Ok, got it`;
     expect(cleanedHtml).not.toContain("Privacy notice:");
     expect(cleanedHtml).toContain("Gun violence has become a critical issue in Papua New Guinea");
   });
+
+  it("remaps Cloudflare-blocked Marginal Revolution image mirrors and enforces referrerpolicy='no-referrer' on img tags", () => {
+    const rawHtml = `<p>Adam Nash has a <a href="https://adamnash.blog/2026/10/25/why-do-older-people-have-most-of-the-money/">good post</a> on wealth inequality:</p>
+<p><a href="https://marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp"><img fetchpriority="high" decoding="async" class="wp-image-94089 alignleft" src="https://marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp" alt="Census wealth chart" width="404" height="261" /></a>…Every year, we pull the most recent data.</p>`;
+
+    const rawMd = `Adam Nash has a [good post](https://adamnash.blog/2026/10/25/why-do-older-people-have-most-of-the-money/) on wealth inequality:
+
+[![](https://marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp)](https://marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp)…Every year, we pull the most recent data.`;
+
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Inequality in Equal Land");
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Inequality in Equal Land");
+
+    expect(cleanedHtml).toContain('referrerpolicy="no-referrer"');
+    expect(cleanedHtml).not.toContain("marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp");
+    expect(cleanedHtml).toContain("adamnash.blog/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.jpg");
+
+    expect(cleanedMd).not.toContain("marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp");
+    expect(cleanedMd).toContain("adamnash.blog/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.jpg");
+  });
 });

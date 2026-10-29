@@ -1,6 +1,6 @@
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.2.2";
-export const GIT_COMMIT = process.env.NEXT_PUBLIC_GIT_COMMIT || "0e5f32b";
-export const BUILD_DATE = process.env.NEXT_PUBLIC_BUILD_DATE || "2026-10-28";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.2.3";
+export const GIT_COMMIT = process.env.NEXT_PUBLIC_GIT_COMMIT || "964065d";
+export const BUILD_DATE = process.env.NEXT_PUBLIC_BUILD_DATE || "2026-10-29";
 export const COPYRIGHT_YEAR = "2026";
 export const COPYRIGHT_OWNER = "Harry McLaren";
 export const COPYRIGHT_NOTICE = `© ${COPYRIGHT_YEAR} ${COPYRIGHT_OWNER}`;
