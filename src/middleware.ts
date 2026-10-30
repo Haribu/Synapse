@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { verifyDPoPProof } from "./lib/security/dpop";
+import { verifyCloudflareAccessJwt } from "./lib/security/cf-access";
 
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -10,7 +12,12 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  // Always permit internal container health checks
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
+
   const host = (request.headers.get("host") || "").toLowerCase();
   const authMode = (process.env.AUTH_MODE || "none").toLowerCase();
   const allowedEmailsEnv = process.env.ALLOWED_EMAILS || "";
@@ -19,7 +26,7 @@ export function middleware(request: NextRequest) {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  // 1. Pre-shared API Key Authentication (Bearer token or x-api-key)
+  // 1. Pre-shared API Key Authentication (Bearer token or x-api-key) with optional DPoP (RFC 9449)
   // Allows external AI agents, headless MCP servers, and CLI tools to access APIs directly
   const apiKeyConfigured = process.env.SYNAPSE_API_KEY?.trim();
   const authHeader = request.headers.get("authorization");
@@ -30,6 +37,35 @@ export function middleware(request: NextRequest) {
 
   if (apiKeyConfigured && providedKey) {
     if (constantTimeEqual(providedKey, apiKeyConfigured)) {
+      // Optional RFC 9449 DPoP Verification
+      const dpopHeader = request.headers.get("dpop");
+      if (dpopHeader) {
+        const dpopResult = await verifyDPoPProof(
+          dpopHeader,
+          request.method,
+          request.nextUrl.pathname
+        );
+        if (!dpopResult.valid) {
+          return new NextResponse(
+            JSON.stringify({
+              error: "Unauthorized: Invalid DPoP proof.",
+              details: dpopResult.error,
+            }),
+            {
+              status: 401,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+        const response = NextResponse.next();
+        response.headers.set("X-Authenticated-By", "synapse-api-key-dpop");
+        if (dpopResult.thumbprint) {
+          response.headers.set("X-DPoP-Thumbprint", dpopResult.thumbprint);
+        }
+        return response;
+      }
+
+      // Standard Bearer Auth without DPoP (backward compatible)
       const response = NextResponse.next();
       response.headers.set("X-Authenticated-By", "synapse-api-key");
       return response;
@@ -58,15 +94,35 @@ export function middleware(request: NextRequest) {
   // 3. Cloudflare Access Enforcement
   const isCloudflare = request.headers.has("cf-ray") || authMode === "cloudflare";
   if (isCloudflare && !isLocalLoopback && allowedList.length > 0) {
-    const cfUserEmail = request.headers.get("cf-access-authenticated-user-email");
-    if (!cfUserEmail || !allowedList.includes(cfUserEmail.toLowerCase())) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Unauthorized: Access restricted to authorized users.",
-          cfUserEmail: cfUserEmail || "None",
-        }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
+    const cfTeamDomain = process.env.CF_ACCESS_TEAM_NAME || process.env.CLOUDFLARE_TEAM_DOMAIN;
+    const cfJwt = request.headers.get("cf-access-jwt-assertion");
+
+    // Cryptographic JWT assertion verification if team domain is configured
+    if (cfTeamDomain && cfJwt) {
+      const expectedAud = process.env.CF_ACCESS_AUD || process.env.CLOUDFLARE_AUD;
+      const jwtResult = await verifyCloudflareAccessJwt(cfJwt, cfTeamDomain, expectedAud);
+
+      if (!jwtResult.valid || !jwtResult.email || !allowedList.includes(jwtResult.email.toLowerCase())) {
+        return new NextResponse(
+          JSON.stringify({
+            error: "Unauthorized: Access restricted to authorized users.",
+            details: jwtResult.error || "User email not whitelisted.",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      // Fast edge header check fallback
+      const cfUserEmail = request.headers.get("cf-access-authenticated-user-email");
+      if (!cfUserEmail || !allowedList.includes(cfUserEmail.toLowerCase())) {
+        return new NextResponse(
+          JSON.stringify({
+            error: "Unauthorized: Access restricted to authorized users.",
+            cfUserEmail: cfUserEmail || "None",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
     }
   }
 

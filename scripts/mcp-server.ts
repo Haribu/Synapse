@@ -16,17 +16,28 @@
  */
 
 import * as readline from "readline";
+import { generateDPoPKeyPair, createDPoPProof } from "../src/lib/security/dpop";
 
 const SYNAPSE_URL = (process.env.SYNAPSE_URL || "http://127.0.0.1:3005").replace(/\/$/, "");
 const SYNAPSE_API_KEY = process.env.SYNAPSE_API_KEY || "";
+const ENABLE_DPOP = process.env.SYNAPSE_DPOP === "true" || process.argv.includes("--dpop");
 
-function getHeaders(): Record<string, string> {
+let dpopKeyPair: CryptoKeyPair | null = null;
+
+async function getHeaders(method = "GET", url = ""): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "User-Agent": "Synapse-MCP-Server/1.0",
   };
   if (SYNAPSE_API_KEY) {
     headers["Authorization"] = `Bearer ${SYNAPSE_API_KEY}`;
+  }
+  if (ENABLE_DPOP) {
+    if (!dpopKeyPair) {
+      dpopKeyPair = await generateDPoPKeyPair();
+    }
+    const targetUrl = url || `${SYNAPSE_URL}/api`;
+    headers["DPoP"] = await createDPoPProof(dpopKeyPair, method, targetUrl);
   }
   return headers;
 }
@@ -128,8 +139,9 @@ async function executeTool(name: string, args: Record<string, any>) {
         if (args.category) params.set("category", args.category);
         params.set("limit", String(args.limit || 10));
 
-        const res = await fetch(`${SYNAPSE_URL}/api/items?${params.toString()}`, {
-          headers: getHeaders(),
+        const targetUrl = `${SYNAPSE_URL}/api/items?${params.toString()}`;
+        const res = await fetch(targetUrl, {
+          headers: await getHeaders("GET", targetUrl),
         });
         const data = await res.json();
         return {
@@ -148,8 +160,9 @@ async function executeTool(name: string, args: Record<string, any>) {
         if (args.category) params.set("category", args.category);
         params.set("limit", String(args.limit || 10));
 
-        const res = await fetch(`${SYNAPSE_URL}/api/items?${params.toString()}`, {
-          headers: getHeaders(),
+        const targetUrl = `${SYNAPSE_URL}/api/items?${params.toString()}`;
+        const res = await fetch(targetUrl, {
+          headers: await getHeaders("GET", targetUrl),
         });
         const data = await res.json();
         return {
@@ -163,12 +176,10 @@ async function executeTool(name: string, args: Record<string, any>) {
       }
 
       case "synapse_get_markdown": {
-        const res = await fetch(
-          `${SYNAPSE_URL}/api/items/${encodeURIComponent(args.id)}/markdown`,
-          {
-            headers: getHeaders(),
-          }
-        );
+        const targetUrl = `${SYNAPSE_URL}/api/items/${encodeURIComponent(args.id)}/markdown`;
+        const res = await fetch(targetUrl, {
+          headers: await getHeaders("GET", targetUrl),
+        });
         if (!res.ok) {
           throw new Error(`Failed to fetch article markdown: HTTP ${res.status}`);
         }
@@ -192,9 +203,10 @@ async function executeTool(name: string, args: Record<string, any>) {
         if (args.action === "flag_work") payload.isWork = true;
         if (args.action === "unflag_work") payload.isWork = false;
 
-        const res = await fetch(`${SYNAPSE_URL}/api/items`, {
+        const targetUrl = `${SYNAPSE_URL}/api/items`;
+        const res = await fetch(targetUrl, {
           method: "PATCH",
-          headers: getHeaders(),
+          headers: await getHeaders("PATCH", targetUrl),
           body: JSON.stringify(payload),
         });
         const data = await res.json();
@@ -209,8 +221,9 @@ async function executeTool(name: string, args: Record<string, any>) {
       }
 
       case "synapse_list_feeds": {
-        const res = await fetch(`${SYNAPSE_URL}/api/feeds`, {
-          headers: getHeaders(),
+        const targetUrl = `${SYNAPSE_URL}/api/feeds`;
+        const res = await fetch(targetUrl, {
+          headers: await getHeaders("GET", targetUrl),
         });
         const data = await res.json();
         return {

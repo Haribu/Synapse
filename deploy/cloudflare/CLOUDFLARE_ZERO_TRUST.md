@@ -176,39 +176,64 @@ Cloudflare Access sets an `HttpOnly`, `Secure` cookie (`CF_Authorization`) upon 
 
 When using AI agents (Antigravity, Claude Desktop, Cursor) or external scripts to interact with your Synapse instance, you have two options depending on your network topology:
 
-### Option 1: Direct App API Key (`SYNAPSE_API_KEY`)
+### Option 1: Direct App API Key (`SYNAPSE_API_KEY`) & DPoP (RFC 9449)
 Synapse's middleware inspects `Authorization: Bearer <key>` and `x-api-key: <key>` headers. When a valid pre-shared key is provided, the request is authenticated via constant-time string comparison, bypassing interactive Cloudflare Access email challenges.
 
-Configure your MCP config (`claude_desktop_config.json` or `antigravity.json`):
+#### Cryptographic Token Binding via DPoP (RFC 9449)
+To prevent stolen API keys from being replayed from untrusted environments, Synapse natively supports **DPoP (Demonstrating Proof-of-Possession)**:
+1. When an agent or script passes a `DPoP: <jwt>` header alongside the Bearer token, Synapse validates the asymmetric proof (HTTP method, target URI, timestamp, and client key thumbprint).
+2. The bundled Synapse MCP server supports DPoP out of the box via the `--dpop` CLI flag or `SYNAPSE_DPOP=true` environment variable:
+
 ```json
 {
   "mcpServers": {
     "synapse": {
       "command": "bun",
-      "args": ["run", "mcp"],
+      "args": ["run", "mcp", "--dpop"],
       "env": {
         "SYNAPSE_URL": "https://read.yourdomain.com",
-        "SYNAPSE_API_KEY": "your-secure-random-64-char-string"
+        "SYNAPSE_API_KEY": "your-secure-random-64-char-string",
+        "SYNAPSE_DPOP": "true"
       }
     }
   }
 }
 ```
 
-### Option 2: Cloudflare Access Service Tokens (Edge Bypass)
-If you require machine requests to pass through Cloudflare Edge without an interactive browser login:
-1. In the Zero Trust dashboard, go to **Access** ➔ **Service Credentials** ➔ click **Add a Service Credential**.
-2. Name it (e.g., `synapse-agent-token`) and set a duration.
-3. Cloudflare will generate a **Client ID** and **Client Secret**.
-4. In your Zero Trust Application Policy, add a policy with Action: **Non Identity** / **Service Auth** matching this Service Credential.
-5. In your agent client or script, pass the edge headers alongside your Synapse API key:
-   - `CF-Access-Client-Id: <CLIENT_ID>`
-   - `CF-Access-Client-Secret: <CLIENT_SECRET>`
-   - `Authorization: Bearer <SYNAPSE_API_KEY>`
+---
+
+## 6. Tier 3: 1-Tap Biometric Passkey Login (Google / GitHub SSO)
+
+For enterprise-grade hardware binding on Cloudflare Zero Trust's free tier, leverage **FIDO2 Passkeys (WebAuthn Discoverable Credentials)** via Google or GitHub SSO. 
+
+*(Note: Custom root CA mTLS uploads require Cloudflare Access Enterprise. WebAuthn Passkeys provide equivalent hardware-backed cryptographic protection using your device's Secure Enclave, Android StrongBox, or Windows TPM with zero cost and no certificate expiration maintenance).*
+
+### Step 1: Connect Identity Provider in Cloudflare
+1. In Cloudflare Zero Trust, navigate to **Settings ➔ Authentication**.
+2. Under **Login methods**, add **Google** (or **GitHub**).
+3. Paste your OAuth Client ID and Secret with the callback URL:
+   `https://<your-team>.cloudflareaccess.com/cdn-cgi/access/callback`
+
+### Step 2: Enforce Hardware MFA in Zero Trust
+1. In **Settings ➔ Authentication ➔ Multi-factor authentication (MFA)**:
+   - Enable **Biometrics** (Touch ID, Face ID, Android fingerprint).
+   - Enable **FIDO2 / Security Keys** (YubiKey).
+   - Keep software authenticator apps (TOTP) **Off** for phishing resistance.
+2. In your Access Application, set Session Duration to **1 month** for frictionless mobile PWA use.
+
+### Step 3: Application-Layer Cryptographic Defense
+In your `docker-compose.override.yml` (or `.env`), configure container-level attestation:
+```yaml
+environment:
+  - AUTH_MODE=cloudflare
+  - ALLOWED_EMAILS=your-email@gmail.com
+  - CF_ACCESS_TEAM_NAME=your-team-domain
+```
+Synapse will independently fetch Cloudflare's JWKS and verify edge cryptographic signatures (`Cf-Access-Jwt-Assertion`) against your email whitelist.
 
 ---
 
-## 6. Troubleshooting & Diagnostics
+## 7. Troubleshooting & Diagnostics
 
 | Symptom | Cause | Remediation |
 | :--- | :--- | :--- |

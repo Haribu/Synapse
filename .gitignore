@@ -24,6 +24,11 @@ dist/
 .env*.local
 docker-compose.override.yml
 *.pem
+certs/
+*.p12
+*.pfx
+*.key
+*.crt
 
 # Obsidian local sync mount / local test files
 /obsidian-vault/

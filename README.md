@@ -1,7 +1,7 @@
 # Synapse — Private, AI-Native RSS++ Reader & Knowledge Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version: 1.2.3](https://img.shields.io/badge/Version-1.2.3-emerald.svg)](./package.json)
+[![Version: 1.3.0](https://img.shields.io/badge/Version-1.3.0-emerald.svg)](./package.json)
 [![CI](https://github.com/Haribu/synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Haribu/synapse/actions)
 [![Container](https://img.shields.io/badge/GHCR-ghcr.io%2Fharibu%2Fsynapse-blue)](https://github.com/Haribu/synapse/pkgs/container/synapse)
 [![MCP](https://img.shields.io/badge/MCP-Native_Server-8A2BE2)](./scripts/mcp-server.ts)
@@ -81,9 +81,9 @@ Self-hosting Synapse does not mean sacrificing the polished, native feel of comm
 Access your personal Synapse instance from anywhere in the world **without opening a single port on your home router**:
 
 1. **Zero Open Ports:** Outbound-only encrypted tunnel from your Docker host to the Cloudflare Edge.
-2. **Hardware Passkeys & Email OTP:** Gate access behind Cloudflare Zero Trust policies with biometric WebAuthn passkeys or magic email codes.
+2. **Hardware Passkeys & 1-Tap Biometric SSO:** Gate access behind Cloudflare Zero Trust policies with WebAuthn passkeys (FaceID / TouchID / Android biometrics) or Google/GitHub OAuth.
 3. **PWA-Friendly Sessions:** Set a 30-day session lifetime so your phone remains logged in like a native app.
-4. **Service Token Authentication:** AI assistants authenticate directly using pre-shared `SYNAPSE_API_KEY` Bearer tokens.
+4. **Cryptographic Token Binding (RFC 9449 DPoP):** AI assistants and MCP servers authenticate using `SYNAPSE_API_KEY` bound to client-side private keys, defeating token replay attacks.
 
 See the complete step-by-step setup walkthrough in [CLOUDFLARE_ZERO_TRUST.md](./deploy/cloudflare/CLOUDFLARE_ZERO_TRUST.md).
 

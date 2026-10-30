@@ -28,6 +28,14 @@ Authorization: Bearer <SYNAPSE_API_KEY>
 x-api-key: <SYNAPSE_API_KEY>
 ```
 
+- **Cryptographic Token Binding via DPoP (RFC 9449):** To prevent bearer token replay across machines if `SYNAPSE_API_KEY` is compromised, clients may include a standard `DPoP` header:
+
+```bash
+Authorization: Bearer <SYNAPSE_API_KEY>
+DPoP: <dpop-proof-jwt>
+```
+When present, Synapse validates the asymmetric proof (HTTP method, target URI, timestamp, and client key thumbprint). Supported algorithms: `ES256` and `RS256`. Responses return `X-Authenticated-By: synapse-api-key-dpop` and `X-DPoP-Thumbprint: <jkt>`.
+
 ---
 
 ## 2. Articles & Research Streams (`/api/items`)

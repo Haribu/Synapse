@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-10-30
+
+### Added
+- **Hardware-Bound WebAuthn Passkeys & RFC 9449 DPoP Token Defense:**
+  - Implemented RFC 9449 DPoP (Demonstrating Proof-of-Possession at the Application Layer) verification engine in `src/lib/security/dpop.ts` and integrated into `src/middleware.ts`, preventing exfiltrated `SYNAPSE_API_KEY` bearer tokens from being replayed from untrusted hosts.
+  - Added native DPoP client proof signing to the bundled Synapse Model Context Protocol server (`scripts/mcp-server.ts`) via `--dpop` CLI flag and `SYNAPSE_DPOP=true`.
+  - Added Cloudflare Access cryptographic JWT assertion verifier in `src/lib/security/cf-access.ts` to validate edge signatures against Cloudflare JWKS when `CF_ACCESS_TEAM_NAME` is configured.
+  - Added comprehensive test suites in `src/lib/security/dpop.test.ts` verifying signature validity, method/URI validation, tamper resistance, and expiration windows.
+  - Documented enterprise-grade 1-tap biometric passkey login via Google/GitHub SSO and phishing-resistant FIDO2 MFA in `deploy/cloudflare/CLOUDFLARE_ZERO_TRUST.md` and updated `API.md`.
+
 ## [1.2.3] - 2026-10-29
 
 ### Fixed
