@@ -89,7 +89,10 @@ export async function computeJwkThumbprint(jwk: DPoPHeader["jwk"]): Promise<stri
   }
 
   const encoder = new TextEncoder();
-  const hash = await crypto.subtle.digest("SHA-256", encoder.encode(canonicalJson));
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    encoder.encode(canonicalJson) as unknown as BufferSource
+  );
   return base64UrlEncode(hash);
 }
 
@@ -169,8 +172,8 @@ export async function verifyDPoPProof(
     const isSigValid = await crypto.subtle.verify(
       verifyAlg,
       publicKey,
-      signatureBytes,
-      dataToVerify
+      signatureBytes as unknown as BufferSource,
+      dataToVerify as unknown as BufferSource
     );
 
     if (!isSigValid) {
@@ -262,7 +265,7 @@ export async function createDPoPProof(
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: { name: "SHA-256" } },
     keyPair.privateKey,
-    encoder.encode(signingInput)
+    encoder.encode(signingInput) as unknown as BufferSource
   );
 
   const signatureB64 = base64UrlEncode(signature);

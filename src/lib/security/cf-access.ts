@@ -148,8 +148,8 @@ export async function verifyCloudflareAccessJwt(
     const isSigValid = await crypto.subtle.verify(
       "RSASSA-PKCS1-v1_5",
       publicKey,
-      signatureBytes,
-      dataToVerify
+      signatureBytes as unknown as BufferSource,
+      dataToVerify as unknown as BufferSource
     );
 
     if (!isSigValid) {
