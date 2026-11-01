@@ -91,40 +91,46 @@ export async function GET() {
       .from(feedItems)
       .get();
 
-    // 5. Authentic reading time & digested words calculation
-    // Grounded in actual logged reading seconds, capped by human reading rate (~230 wpm)
-    const readItems = db
-      .select({
-        contentMarkdown: feedItems.fullContentMarkdown,
-        snippet: feedItems.snippet,
-        durationSeconds: feedItems.readDurationSeconds,
-        isEngagedRead: feedItems.isEngagedRead,
-      })
-      .from(feedItems)
-      .where(sql`${feedItems.readDurationSeconds} > 0`)
-      .all();
-
-    let totalWordsRead = 0;
-    let totalEngagedSeconds = 0;
-
-    for (const item of readItems) {
-      const dur = item.durationSeconds || 0;
-      if (item.isEngagedRead) {
-        totalEngagedSeconds += dur;
-      }
-      const text = item.contentMarkdown || item.snippet || "";
-      const articleWords = text.trim().split(/\s+/).filter(Boolean).length || 150;
-      // Human reading rate ~230 wpm = ~3.8 words/sec
-      const wordsAtVelocity = Math.round(dur * (230 / 60));
-      const digested = Math.min(articleWords, Math.max(wordsAtVelocity, 0));
-      totalWordsRead += digested;
+    // Helper to safely convert Unix seconds (<100B) or ms (>=100B) to Epoch milliseconds
+    function toEpochMs(ts: any): number {
+      if (!ts) return 0;
+      const n = typeof ts === "number" ? ts : new Date(ts).getTime();
+      return n < 100_000_000_000 ? n * 1000 : n;
     }
 
+    // 5. Authentic reading time & digested words calculation
+    // Grounded directly in logged reading sessions
+    const sessionEngaged = db
+      .select({
+        totalWords: sql<number>`coalesce(sum(${readingSessions.wordCount}), 0)`,
+        totalSeconds: sql<number>`coalesce(sum(case when ${readingSessions.action} = 'read' then ${readingSessions.durationSeconds} else 0 end), 0)`,
+        distinctArticles: sql<number>`count(distinct case when ${readingSessions.action} = 'read' then ${readingSessions.targetId} else null end)`,
+      })
+      .from(readingSessions)
+      .get();
+
+    const totalEngagedSeconds = sessionEngaged?.totalSeconds || 0;
+    const totalWordsRead =
+      sessionEngaged?.totalWords && sessionEngaged.totalWords > 0
+        ? sessionEngaged.totalWords
+        : Math.round(totalEngagedSeconds * (230 / 60));
     const estimatedMinutesRead = Math.round(totalEngagedSeconds / 60);
 
+    // Count Obsidian exports from vault if mounted, or session fallback
+    let obsidianSavedCount = sessionStats?.obsidianSaved || 0;
+    try {
+      const vaultDir = "/obsidian-vault/01 - Inbox/Synapse";
+      if (fs.existsSync(vaultDir)) {
+        obsidianSavedCount = Math.max(
+          obsidianSavedCount,
+          fs.readdirSync(vaultDir).filter((f) => f.endsWith(".md") && f !== "Feedback-Log.md").length
+        );
+      }
+    } catch {}
+
     // 6. Last 7 Days velocity (distinguishing true reading from skims/flicks)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgoSec = Math.floor(sevenDaysAgoMs / 1000);
 
     const recentSessions = db
       .select({
@@ -132,7 +138,9 @@ export async function GET() {
         action: readingSessions.action,
       })
       .from(readingSessions)
-      .where(gte(readingSessions.timestamp, sevenDaysAgo))
+      .where(
+        sql`(${readingSessions.timestamp} < 10000000000 AND ${readingSessions.timestamp} >= ${sevenDaysAgoSec}) OR (${readingSessions.timestamp} >= 10000000000 AND ${readingSessions.timestamp} >= ${sevenDaysAgoMs})`
+      )
       .all();
 
     // Format 7-day velocity map (Day of week / date -> { engaged, skimmed, flicked, count })
@@ -154,7 +162,7 @@ export async function GET() {
 
     for (const session of recentSessions) {
       if (session.timestamp) {
-        const key = new Date(session.timestamp).toLocaleDateString("en-US", {
+        const key = new Date(toEpochMs(session.timestamp)).toLocaleDateString("en-US", {
           weekday: "short",
           month: "numeric",
           day: "numeric",
@@ -174,7 +182,7 @@ export async function GET() {
 
     const dailyVelocity = Object.values(daysMap);
 
-    const engagedCount = totalItemsRow?.engaged || 0;
+    const engagedCount = sessionEngaged?.distinctArticles || sessionStats?.engagedCount || totalItemsRow?.engaged || 0;
     const triagedCount = totalItemsRow?.triaged || 0;
     const engagementRatio = triagedCount > 0 ? Math.round((engagedCount / triagedCount) * 100) : 0;
 
@@ -194,7 +202,7 @@ export async function GET() {
         const dateSet = new Set<string>();
         for (const s of sessionDates) {
           if (s.timestamp) {
-            const dateStr = new Date(s.timestamp).toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+            const dateStr = new Date(toEpochMs(s.timestamp)).toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
             dateSet.add(dateStr);
           }
         }
@@ -407,7 +415,7 @@ export async function GET() {
         hydratedArticles: totalItemsRow?.hydrated || 0,
         researchInboxCount: readingListRow?.total || 0,
         boardsCount: boardsCountRow?.total || 0,
-        obsidianSaved: sessionStats?.obsidianSaved || 0,
+        obsidianSaved: obsidianSavedCount,
         gdocsSaved: sessionStats?.gdocsSaved || 0,
         totalWordsRead,
         estimatedMinutesRead,
@@ -427,7 +435,7 @@ export async function GET() {
           read: researchRow?.readResearch || 0,
           pending: (researchRow?.totalResearch || 0) - (researchRow?.readResearch || 0),
         },
-        obsidianNotesSaved: sessionStats?.obsidianSaved || 0,
+        obsidianNotesSaved: obsidianSavedCount,
         gdocsNotesSaved: sessionStats?.gdocsSaved || 0,
       },
       categories: categoryStats.map((c) => ({

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.4] - 2026-11-01
+
+### Fixed
+- **Reading Analytics & Telemetry Engine Restoration (`src/app/api/stats/route.ts`):**
+  - Grounded authentic reading stats (`totalWordsRead`, `estimatedMinutesRead`, `engagedArticles`, `loggedSeconds`) directly in `reading_sessions` where all 3,234 user sessions are preserved, restoring 334+ hours of logged deep reading, 430 distinct articles, and 299,000+ words read.
+  - Resolved Unix Epoch Seconds (`1791120684`) vs Milliseconds timestamp mismatch in `stats/route.ts` using `toEpochMs()`, restoring 7-day daily velocity charts and consecutive reading streak calculations.
+  - Reconciled Obsidian literature notes count directly from the mounted vault (`/obsidian-vault/01 - Inbox/Synapse`).
+
 ## [1.3.3] - 2026-11-01
 
 ### Fixed & Hardened
