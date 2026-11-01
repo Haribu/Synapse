@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.12] - 2026-11-01
+
+### Fixed
+- **Empty Feeds Auto-Recovery & Feed URL Modernization:**
+  - Added automatic historical backfill in `reconcileUserData()` to copy archive articles from seed database for feeds that currently have 0 items.
+  - Healed 8 legacy/broken/redirected feed URLs (Graham Cluley, Schneier on Security, Slack Engineering, James Clear, Mark Manson, Wait But Why, Sketchplanations, Dan Wang) and trimmed title whitespace.
+  - Relaxed the 3-year publication cutoff in `sync-engine.ts` for feeds with zero stored articles, allowing initial hydration for long-form/infrequent essayists.
+  - Enhanced Cloudflare edge protection compatibility in `feed-fetcher.ts` by using standard browser User-Agent headers for known WAF-protected domains.
+
 ## [1.3.11] - 2026-11-01
 
 ### Added

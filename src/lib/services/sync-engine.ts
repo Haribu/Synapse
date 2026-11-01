@@ -114,11 +114,31 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
       "https://marginalrevolution.com/feed",
     "http://feeds.trendmicro.com/TrendMicroSimplySecurity":
       "https://feeds.feedburner.com/TrendMicroSimplySecurity",
+    "http://feeds.feedburner.com/feed":
+      "https://grahamcluley.com/feed/",
+    "http://www.schneier.com/blog/index.rdf":
+      "https://www.schneier.com/feed/atom/",
+    "https://slack.engineering/feed":
+      "https://slack.engineering/feed/",
+    "http://jamesclear.com/feed":
+      "https://jamesclear.com/feed",
+    "http://markmanson.net/feed":
+      "https://markmanson.net/feed/",
+    "http://waitbutwhy.com/feed":
+      "https://waitbutwhy.com/feed/",
+    "http://www.sketchplanations.com/rss":
+      "https://sketchplanations.com/rss",
+    "http://danwang.co/feed/":
+      "https://danwang.co/feed/",
   };
   if (legacyUrlRedirects[feed.feedUrl]) {
     const healedUrl = legacyUrlRedirects[feed.feedUrl];
     db.update(feeds).set({ feedUrl: healedUrl }).where(eq(feeds.id, feedId)).run();
     feed.feedUrl = healedUrl;
+  }
+  if (feed.title === "Risk and Cyber ") {
+    db.update(feeds).set({ title: "Risk and Cyber" }).where(eq(feeds.id, feedId)).run();
+    feed.title = "Risk and Cyber";
   }
 
   // Auto-heal poisoned YouTube feeds: restore channel_id=UC or playlist_id=UU back to UULF...
@@ -141,10 +161,16 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
   });
 
   try {
+    // If the feed currently has zero articles stored locally, bypass ETag / Last-Modified
+    // to prevent getting trapped in an HTTP 304 Not Modified loop with zero stored articles.
+    const hasStoredArticles =
+      sqlite.prepare("SELECT 1 FROM feed_items WHERE feed_id = ? LIMIT 1").get(feedId) !==
+      undefined;
+
     const fetchPromise = fetchFeed(
       feed.feedUrl,
-      feed.etag || undefined,
-      feed.lastModified || undefined
+      hasStoredArticles ? (feed.etag || undefined) : undefined,
+      hasStoredArticles ? (feed.lastModified || undefined) : undefined
     );
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("Feed fetch exceeded 20s timeout limit")), 20000)
@@ -210,8 +236,9 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
       const futureCutoffMs = Date.now() + 60 * 60 * 1000;
       const threeYearsAgoMs = Date.now() - 3 * 365 * 86400 * 1000;
       for (const item of itemsToSync) {
-        // Guard against ancient historical articles (> 3 years old) infiltrating the feed
-        if (item.publishedAt && item.publishedAt.getTime() < threeYearsAgoMs) {
+        // Guard against ancient historical articles (> 3 years old) infiltrating the feed,
+        // EXCEPT when the feed currently has zero stored articles (allow initial archive hydration).
+        if (hasStoredArticles && item.publishedAt && item.publishedAt.getTime() < threeYearsAgoMs) {
           continue;
         }
 

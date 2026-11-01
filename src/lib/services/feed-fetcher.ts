@@ -346,17 +346,26 @@ export async function fetchFeed(
   validateSafeUrl(feedUrl);
 
   const isYouTube = feedUrl.includes("youtube.com") || feedUrl.includes("youtu.be");
+  const isCloudflareLikely =
+    feedUrl.includes("talosintelligence.com") ||
+    feedUrl.includes("cyentia.com") ||
+    feedUrl.includes("crankysec.com") ||
+    feedUrl.includes("curatedintel.org") ||
+    feedUrl.includes("github.blog") ||
+    feedUrl.includes("securelist.com") ||
+    feedUrl.includes("jordanbpeterson.com");
 
   const headers: Record<string, string> = {
-    "User-Agent": isYouTube
-      ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      : "Synapse-Reader/1.0 (+https://github.com/synapse-reader; Mozilla/5.0 compatible)",
+    "User-Agent":
+      isYouTube || isCloudflareLikely
+        ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        : "Synapse-Reader/1.0 (+https://github.com/synapse-reader; Mozilla/5.0 compatible)",
     Accept: isYouTube
       ? "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8"
       : "application/rss+xml, application/atom+xml, application/xml, text/xml, application/rdf+xml, text/html;q=0.9",
   };
 
-  if (isYouTube) {
+  if (isYouTube || isCloudflareLikely) {
     headers["Accept-Language"] = "en-US,en;q=0.9";
   }
 

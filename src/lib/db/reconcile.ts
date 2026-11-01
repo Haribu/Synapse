@@ -27,6 +27,27 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
   };
 
   try {
+    // 0. Auto-heal known legacy / broken feed URLs and titles
+    const hasFeedsTable = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='feeds'")
+      .get();
+    if (hasFeedsTable) {
+      const feedUrlFixes: Record<string, string> = {
+        "http://feeds.feedburner.com/feed": "https://grahamcluley.com/feed/",
+        "http://www.schneier.com/blog/index.rdf": "https://www.schneier.com/feed/atom/",
+        "https://slack.engineering/feed": "https://slack.engineering/feed/",
+        "http://jamesclear.com/feed": "https://jamesclear.com/feed",
+        "http://markmanson.net/feed": "https://markmanson.net/feed/",
+        "http://waitbutwhy.com/feed": "https://waitbutwhy.com/feed/",
+        "http://www.sketchplanations.com/rss": "https://sketchplanations.com/rss",
+        "http://danwang.co/feed/": "https://danwang.co/feed/",
+      };
+      for (const [oldUrl, newUrl] of Object.entries(feedUrlFixes)) {
+        sqlite.prepare("UPDATE feeds SET feed_url = ? WHERE feed_url = ?").run(newUrl, oldUrl);
+      }
+      sqlite.prepare("UPDATE feeds SET title = 'Risk and Cyber' WHERE title = 'Risk and Cyber '").run();
+    }
+
     // 1. Reading List: All items imported as read-later or feedly-import should have is_starred = 1
     const rlStarRes = sqlite
       .prepare(
@@ -219,6 +240,35 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
             )
             .run();
           result.restoredFromSeed += insertMissing.changes;
+
+          // Also backfill historical items for feeds that currently have 0 items in the database
+          if (hasFeedsTable) {
+            const backfillEmptyFeeds = sqlite
+              .prepare(
+                `INSERT OR IGNORE INTO feed_items (
+                   id, feed_id, guid, title, url, author, snippet, full_content_html,
+                   full_content_markdown, is_full_fetched, media_type, video_id,
+                   thumbnail_url, is_read, is_starred, ai_summary, published_at,
+                   created_at, is_work, work_dispatched_at
+                 )
+                 SELECT
+                   s.id, s.feed_id, s.guid, s.title, s.url, s.author, s.snippet, s.full_content_html,
+                   s.full_content_markdown, s.is_full_fetched, s.media_type, s.video_id,
+                   s.thumbnail_url, s.is_read, s.is_starred, s.ai_summary, s.published_at,
+                   s.created_at, s.is_work, s.work_dispatched_at
+                 FROM seed_db.feed_items s
+                 WHERE s.feed_id IN (
+                   SELECT f.id FROM feeds f
+                   LEFT JOIN feed_items fi ON f.id = fi.feed_id
+                   GROUP BY f.id
+                   HAVING count(fi.id) = 0
+                 )
+                 AND s.url NOT IN (SELECT url FROM feed_items WHERE url IS NOT NULL)
+                 AND s.title NOT IN (SELECT title FROM feed_items WHERE title IS NOT NULL)`
+              )
+              .run();
+            result.restoredFromSeed += backfillEmptyFeeds.changes;
+          }
 
           sqlite.exec("DETACH DATABASE seed_db;");
           break; // successfully processed seed

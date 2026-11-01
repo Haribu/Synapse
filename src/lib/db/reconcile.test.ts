@@ -183,6 +183,36 @@ describe("reconcileUserData", () => {
     expect(goodReport.violations.length).toBe(0);
   });
 
+  it("auto-heals known legacy and broken feed URLs and titles", () => {
+    db.exec(`CREATE TABLE feeds (id TEXT PRIMARY KEY, title TEXT, feed_url TEXT);`);
+    db.prepare(`INSERT INTO feeds (id, title, feed_url) VALUES (?, ?, ?)`).run(
+      "f-schneier",
+      "Schneier on Security",
+      "http://www.schneier.com/blog/index.rdf"
+    );
+    db.prepare(`INSERT INTO feeds (id, title, feed_url) VALUES (?, ?, ?)`).run(
+      "f-risk",
+      "Risk and Cyber ",
+      "https://www.philvenables.com/blog-feed.xml"
+    );
+    db.prepare(`INSERT INTO feeds (id, title, feed_url) VALUES (?, ?, ?)`).run(
+      "f-cluley",
+      "Graham Cluley",
+      "http://feeds.feedburner.com/feed"
+    );
+
+    reconcileUserData(db as any);
+
+    const f1 = db.prepare(`SELECT feed_url FROM feeds WHERE id = ?`).get("f-schneier") as any;
+    expect(f1.feed_url).toBe("https://www.schneier.com/feed/atom/");
+
+    const f2 = db.prepare(`SELECT title FROM feeds WHERE id = ?`).get("f-risk") as any;
+    expect(f2.title).toBe("Risk and Cyber");
+
+    const f3 = db.prepare(`SELECT feed_url FROM feeds WHERE id = ?`).get("f-cluley") as any;
+    expect(f3.feed_url).toBe("https://grahamcluley.com/feed/");
+  });
+
   it("handles environment variable floor overrides cleanly", () => {
     const originalEnv = process.env.DATA_FLOOR_WORK;
     try {
