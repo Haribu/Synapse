@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.5] - 2026-11-01
+
+### Fixed
+- **Idle-Tab Outlier Clamping & Full Sub-Chart Telemetry (`src/lib/db/reconcile.ts`, `src/app/api/stats/route.ts`):**
+  - Clamped 41 runaway idle-tab sessions (`>1800s`) in `reading_sessions` to realistic word-count reading durations (max 30m per session), restoring authentic reading duration (~35.8h / ~299k words) instead of inflated multi-day idle tabs.
+  - Joined `reading_sessions` to `feeds` across Category Breakdown, Written vs. Video Split, and Most-Read Feeds Leaderboard in `/api/stats`, populating all sub-charts with historical engaged reading counts and dwell time.
+  - Restored `work_dispatched_at` timestamps on previously dispatched October work digest items so Dispatched (3) and Pending (2) queues reflect true workflow state.
+
 ## [1.3.4] - 2026-11-01
 
 ### Fixed

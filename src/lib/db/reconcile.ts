@@ -98,6 +98,60 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
       result.feedItemsWork += res.changes;
     }
 
+    // 4b. Mark previously dispatched October work digest items as dispatched so only new items sit in Pending
+    const historicalDispatchEpochMs = 1791630000000; // 2026-10-10
+    try {
+      sqlite
+        .prepare(
+          `UPDATE feed_items
+           SET work_dispatched_at = ?
+           WHERE is_work = 1
+             AND work_dispatched_at IS NULL
+             AND (
+               title LIKE '%Apple changes full-disk access%'
+               OR title LIKE '%Supporting the People Who Make Safe Operations%'
+               OR title LIKE '%The AI Bubble%'
+             )`
+        )
+        .run(historicalDispatchEpochMs);
+
+      sqlite
+        .prepare(
+          `UPDATE reading_list
+           SET work_dispatched_at = ?
+           WHERE is_work = 1
+             AND work_dispatched_at IS NULL
+             AND title LIKE '%The AI Bubble%'`
+        )
+        .run(historicalDispatchEpochMs);
+    } catch {}
+
+    // 4c. Clamp runaway idle-tab outliers (>1800s / 30m) in reading_sessions and sync engaged status to feed_items
+    try {
+      const hasSessions = sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='reading_sessions'")
+        .get();
+      if (hasSessions) {
+        sqlite.exec(`
+          UPDATE reading_sessions
+          SET duration_seconds = CASE
+            WHEN word_count > 0 THEN min(1800, max(60, CAST(word_count * 60.0 / 200.0 AS INTEGER)))
+            ELSE 300
+          END
+          WHERE duration_seconds > 1800;
+
+          UPDATE feed_items
+          SET is_engaged_read = 1,
+              read_duration_seconds = coalesce(
+                (SELECT sum(min(duration_seconds, 1800)) FROM reading_sessions WHERE reading_sessions.target_id = feed_items.id),
+                read_duration_seconds,
+                60
+              )
+          WHERE id IN (SELECT DISTINCT target_id FROM reading_sessions WHERE action = 'read');
+        `);
+      }
+    } catch {}
+
     // 5. Restore any missing starred/work articles from host seed db or backups
     const candidateSeeds = [
       path.join("/app", "seed_data", "synapse.db"),

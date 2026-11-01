@@ -28,7 +28,20 @@ describe("reconcileUserData", () => {
         published_at INTEGER,
         created_at INTEGER,
         is_work INTEGER DEFAULT 0,
-        work_dispatched_at INTEGER
+        work_dispatched_at INTEGER,
+        is_engaged_read INTEGER DEFAULT 0,
+        read_duration_seconds INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE reading_sessions (
+        id TEXT PRIMARY KEY,
+        target_type TEXT,
+        target_id TEXT,
+        duration_seconds INTEGER DEFAULT 0,
+        word_count INTEGER DEFAULT 0,
+        action TEXT,
+        timestamp INTEGER,
+        feed_id TEXT
       );
 
       CREATE TABLE reading_list (
@@ -107,5 +120,36 @@ describe("reconcileUserData", () => {
 
     const fi = db.prepare(`SELECT is_starred FROM feed_items WHERE id = ?`).get("fi-starred") as any;
     expect(fi.is_starred).toBe(1);
+  });
+
+  it("clamps idle-tab outliers (>1800s) in reading_sessions and sets historical work_dispatched_at", () => {
+    db.prepare(
+      `INSERT INTO reading_sessions (id, target_type, target_id, duration_seconds, word_count, action, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run("rs-idle", "feed_item", "fi-1", 248755, 600, "read", 1791790215);
+
+    db.prepare(
+      `INSERT INTO feed_items (id, title, url, is_work) VALUES (?, ?, ?, ?)`
+    ).run(
+      "fi-1",
+      "Apple changes full-disk access permissions to curb abuse from AI agents",
+      "https://example.com/apple",
+      1
+    );
+
+    reconcileUserData(db as any);
+
+    const rs = db
+      .prepare(`SELECT duration_seconds FROM reading_sessions WHERE id = ?`)
+      .get("rs-idle") as any;
+    expect(rs.duration_seconds).toBeLessThanOrEqual(1800);
+    expect(rs.duration_seconds).toBe(180); // 600 words at 200 wpm = 180s
+
+    const fi = db
+      .prepare(`SELECT is_engaged_read, read_duration_seconds, work_dispatched_at FROM feed_items WHERE id = ?`)
+      .get("fi-1") as any;
+    expect(fi.is_engaged_read).toBe(1);
+    expect(fi.read_duration_seconds).toBe(180);
+    expect(fi.work_dispatched_at).toBe(1791630000000);
   });
 });

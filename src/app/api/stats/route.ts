@@ -52,19 +52,45 @@ export async function GET() {
       .from(readingSessions)
       .get();
 
-    // 3. Category Breakdown (Dual-metric: triaged vs engaged)
-    const categoryStats = db
+    // 3. Category Breakdown (Dual-metric: triaged from feed_items + engaged from reading_sessions)
+    const rawCategoryStats = db
       .select({
         category: feeds.category,
         total: sql<number>`count(${feedItems.id})`,
         read: sql<number>`count(case when ${feedItems.isRead} = 1 then 1 else null end)`,
-        engaged: sql<number>`count(case when ${feedItems.isEngagedRead} = 1 then 1 else null end)`,
-        engagedSeconds: sql<number>`coalesce(sum(case when ${feedItems.isEngagedRead} = 1 then ${feedItems.readDurationSeconds} else 0 end), 0)`,
       })
       .from(feeds)
       .leftJoin(feedItems, eq(feeds.id, feedItems.feedId))
       .groupBy(feeds.category)
       .all();
+
+    const sessionCategoryRows = sqlite
+      .prepare(
+        `SELECT
+           coalesce(f.category, 'General') as category,
+           count(distinct case when rs.action = 'read' then rs.target_id else null end) as engaged,
+           coalesce(sum(case when rs.action = 'read' then min(rs.duration_seconds, 1800) else 0 end), 0) as engagedSeconds
+         FROM reading_sessions rs
+         LEFT JOIN feeds f ON f.id = rs.feed_id
+         GROUP BY coalesce(f.category, 'General')`
+      )
+      .all() as Array<{ category: string; engaged: number; engagedSeconds: number }>;
+
+    const sessionCategoryMap = new Map(
+      sessionCategoryRows.map((r) => [r.category, { engaged: r.engaged, engagedSeconds: r.engagedSeconds }])
+    );
+
+    const categoryStats = rawCategoryStats.map((c) => {
+      const cat = c.category || "General";
+      const sess = sessionCategoryMap.get(cat);
+      return {
+        category: cat,
+        total: c.total,
+        read: c.read,
+        engaged: sess?.engaged || 0,
+        engagedSeconds: sess?.engagedSeconds || 0,
+      };
+    });
 
     // 4. Media Types Breakdown
     const mediaStats = db
@@ -76,20 +102,39 @@ export async function GET() {
       .groupBy(feedItems.mediaType)
       .all();
 
-    // 4b. Written Articles vs Video Breakdown
-    const writtenVsVideoRow = db
+    // 4b. Written Articles vs Video Breakdown (enriched with reading_sessions telemetry)
+    const baseWrittenVsVideo = db
       .select({
         totalArticles: sql<number>`count(case when (${feedItems.mediaType} != 'video' or ${feedItems.mediaType} is null) and ${feedItems.videoId} is null and ${feedItems.url} not like '%youtube%' then 1 else null end)`,
         readArticles: sql<number>`count(case when (${feedItems.mediaType} != 'video' or ${feedItems.mediaType} is null) and ${feedItems.videoId} is null and ${feedItems.url} not like '%youtube%' and ${feedItems.isRead} = 1 then 1 else null end)`,
-        engagedArticles: sql<number>`count(case when (${feedItems.mediaType} != 'video' or ${feedItems.mediaType} is null) and ${feedItems.videoId} is null and ${feedItems.url} not like '%youtube%' and ${feedItems.isEngagedRead} = 1 then 1 else null end)`,
         totalVideos: sql<number>`count(case when ${feedItems.mediaType} = 'video' or ${feedItems.videoId} is not null or ${feedItems.url} like '%youtube%' then 1 else null end)`,
         triagedVideos: sql<number>`count(case when (${feedItems.mediaType} = 'video' or ${feedItems.videoId} is not null or ${feedItems.url} like '%youtube%') and ${feedItems.isRead} = 1 then 1 else null end)`,
-        watchedVideos: sql<number>`count(case when (${feedItems.mediaType} = 'video' or ${feedItems.videoId} is not null or ${feedItems.url} like '%youtube%') and (${feedItems.isEngagedRead} = 1 or ${feedItems.readDurationSeconds} >= 30) then 1 else null end)`,
-        watchedSeconds: sql<number>`coalesce(sum(case when ${feedItems.mediaType} = 'video' or ${feedItems.videoId} is not null or ${feedItems.url} like '%youtube%' then ${feedItems.readDurationSeconds} else 0 end), 0)`,
         watchLaterVideos: sql<number>`count(case when (${feedItems.mediaType} = 'video' or ${feedItems.videoId} is not null or ${feedItems.url} like '%youtube%') and ${feedItems.isStarred} = 1 then 1 else null end)`,
       })
       .from(feedItems)
       .get();
+
+    const sessionMediaSplit = sqlite
+      .prepare(
+        `SELECT
+           count(distinct case when rs.action = 'read' and coalesce(f.feed_type, 'rss') != 'youtube' then rs.target_id else null end) as engagedArticles,
+           count(distinct case when rs.action = 'read' and f.feed_type = 'youtube' then rs.target_id else null end) as watchedVideos,
+           coalesce(sum(case when rs.action = 'read' and f.feed_type = 'youtube' then min(rs.duration_seconds, 1800) else 0 end), 0) as watchedSeconds
+         FROM reading_sessions rs
+         LEFT JOIN feeds f ON f.id = rs.feed_id`
+      )
+      .get() as { engagedArticles: number; watchedVideos: number; watchedSeconds: number } | undefined;
+
+    const writtenVsVideoRow = {
+      totalArticles: baseWrittenVsVideo?.totalArticles || 0,
+      readArticles: baseWrittenVsVideo?.readArticles || 0,
+      engagedArticles: sessionMediaSplit?.engagedArticles || 0,
+      totalVideos: baseWrittenVsVideo?.totalVideos || 0,
+      triagedVideos: baseWrittenVsVideo?.triagedVideos || 0,
+      watchedVideos: sessionMediaSplit?.watchedVideos || 0,
+      watchedSeconds: sessionMediaSplit?.watchedSeconds || 0,
+      watchLaterVideos: baseWrittenVsVideo?.watchLaterVideos || 0,
+    };
 
     // Helper to safely convert Unix seconds (<100B) or ms (>=100B) to Epoch milliseconds
     function toEpochMs(ts: any): number {
@@ -99,11 +144,11 @@ export async function GET() {
     }
 
     // 5. Authentic reading time & digested words calculation
-    // Grounded directly in logged reading sessions
+    // Grounded directly in logged reading sessions with 1800s (30m) per-session idle-tab cap
     const sessionEngaged = db
       .select({
-        totalWords: sql<number>`coalesce(sum(${readingSessions.wordCount}), 0)`,
-        totalSeconds: sql<number>`coalesce(sum(case when ${readingSessions.action} = 'read' then ${readingSessions.durationSeconds} else 0 end), 0)`,
+        totalWords: sql<number>`coalesce(sum(case when ${readingSessions.action} = 'read' then ${readingSessions.wordCount} else 0 end), 0)`,
+        totalSeconds: sql<number>`coalesce(sum(case when ${readingSessions.action} = 'read' then min(${readingSessions.durationSeconds}, 1800) else 0 end), 0)`,
         distinctArticles: sql<number>`count(distinct case when ${readingSessions.action} = 'read' then ${readingSessions.targetId} else null end)`,
       })
       .from(readingSessions)
@@ -330,30 +375,39 @@ export async function GET() {
       const pageCount = Number(sqlite.pragma("page_count", { simple: true }) || 0);
       const freelistCount = Number(sqlite.pragma("freelist_count", { simple: true }) || 0);
 
-      // Rank feeds by true engaged reading dwell time rather than raw bulk marks
-      const mostReadFeeds = db
-        .select({
-          title: feeds.title,
-          category: feeds.category,
-          editorialType: feeds.editorialType,
-          engagedSeconds: sql<number>`coalesce(sum(case when ${feedItems.isEngagedRead} = 1 then ${feedItems.readDurationSeconds} else 0 end), 0)`,
-          engagedCount: sql<number>`count(case when ${feedItems.isEngagedRead} = 1 then 1 else null end)`,
-          readCount: sql<number>`count(case when ${feedItems.isRead} = 1 then 1 else null end)`,
-          totalCount: sql<number>`count(${feedItems.id})`,
-        })
-        .from(feeds)
-        .leftJoin(feedItems, eq(feeds.id, feedItems.feedId))
-        .groupBy(feeds.id)
-        .having(
-          sql`count(case when ${feedItems.isEngagedRead} = 1 then 1 else null end) > 0 OR count(case when ${feedItems.isRead} = 1 then 1 else null end) > 0`
+      // Rank feeds by true engaged reading dwell time from reading_sessions
+      const mostReadFeeds = sqlite
+        .prepare(
+          `SELECT
+             f.title as title,
+             coalesce(f.category, 'General') as category,
+             coalesce(f.editorial_type, 'independent') as editorialType,
+             coalesce(rs_agg.engagedSeconds, 0) as engagedSeconds,
+             coalesce(rs_agg.engagedCount, 0) as engagedCount,
+             coalesce(fi_agg.readCount, 0) as readCount,
+             coalesce(fi_agg.totalCount, 0) as totalCount
+           FROM feeds f
+           LEFT JOIN (
+             SELECT
+               feed_id,
+               sum(case when action = 'read' then min(duration_seconds, 1800) else 0 end) as engagedSeconds,
+               count(distinct case when action = 'read' then target_id else null end) as engagedCount
+             FROM reading_sessions
+             WHERE feed_id IS NOT NULL
+             GROUP BY feed_id
+           ) rs_agg ON rs_agg.feed_id = f.id
+           LEFT JOIN (
+             SELECT
+               feed_id,
+               count(case when is_read = 1 then 1 else null end) as readCount,
+               count(id) as totalCount
+             FROM feed_items
+             GROUP BY feed_id
+           ) fi_agg ON fi_agg.feed_id = f.id
+           WHERE coalesce(rs_agg.engagedCount, 0) > 0 OR coalesce(fi_agg.readCount, 0) > 0
+           ORDER BY coalesce(rs_agg.engagedSeconds, 0) DESC, coalesce(rs_agg.engagedCount, 0) DESC
+           LIMIT 6`
         )
-        .orderBy(
-          desc(
-            sql`coalesce(sum(case when ${feedItems.isEngagedRead} = 1 then ${feedItems.readDurationSeconds} else 0 end), 0)`
-          ),
-          desc(sql`count(case when ${feedItems.isEngagedRead} = 1 then 1 else null end)`)
-        )
-        .limit(6)
         .all();
 
       const highestVolumeFeeds = db
