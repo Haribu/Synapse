@@ -43,6 +43,5 @@ ISA.md
 GEMINI.md
 *.tsbuildinfo
 .DS_Store
-*/.DS_Store
-*/*/.DS_Store
+**/.DS_Store
 

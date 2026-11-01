@@ -6,7 +6,9 @@
 
 import fs from "fs";
 
-const BASE_URL = process.env.SYNAPSE_URL || "http://127.0.0.1:3005";
+const BASE_URL =
+  process.env.SYNAPSE_URL ||
+  (fs.existsSync("/.dockerenv") ? "http://synapse:3000" : "http://127.0.0.1:3005");
 
 function resolveAllowedEmail(): string {
   if (process.env.ALLOWED_EMAILS) {

@@ -5,7 +5,19 @@
  * respond cleanly across desktop and mobile User-Agent profiles.
  */
 
-const TARGET_URL = (process.env.SYNAPSE_URL || "http://127.0.0.1:3005").replace(/\/$/, "");
+const TARGET_URL = (
+  process.env.SYNAPSE_URL ||
+  (typeof process !== "undefined" && process.env.NODE_ENV === "production"
+    ? "http://synapse:3000"
+    : "http://127.0.0.1:3005")
+).replace(/\/$/, "");
+
+function resolveAllowedEmail(): string {
+  if (process.env.ALLOWED_EMAILS) {
+    return process.env.ALLOWED_EMAILS.split(",")[0]?.trim() || "";
+  }
+  return "";
+}
 
 const PROFILES = [
   {
@@ -22,15 +34,19 @@ const PROFILES = [
 
 async function verifyUi() {
   console.log(`\n🔍 [Synapse UI Verify] Auditing UI shell against ${TARGET_URL}...\n`);
+  const allowedEmail = resolveAllowedEmail();
 
   for (const profile of PROFILES) {
     const start = Date.now();
-    const res = await fetch(`${TARGET_URL}/`, {
-      headers: {
-        "User-Agent": profile.userAgent,
-        Host: "localhost",
-      },
-    });
+    const headers: Record<string, string> = {
+      "User-Agent": profile.userAgent,
+      Host: "localhost",
+    };
+    if (allowedEmail) {
+      headers["CF-Access-Authenticated-User-Email"] = allowedEmail;
+    }
+
+    const res = await fetch(`${TARGET_URL}/`, { headers });
     const html = await res.text();
     const elapsed = Date.now() - start;
 
