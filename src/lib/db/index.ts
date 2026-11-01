@@ -15,6 +15,14 @@ if (!isBuildPhase && !fs.existsSync(DATA_DIR)) {
 
 const dbPath = isBuildPhase ? ":memory:" : path.join(DATA_DIR, "synapse.db");
 
+function safeCopyDb(source: string, destination: string) {
+  try {
+    if (fs.existsSync(`${destination}-wal`)) fs.unlinkSync(`${destination}-wal`);
+    if (fs.existsSync(`${destination}-shm`)) fs.unlinkSync(`${destination}-shm`);
+  } catch {}
+  fs.copyFileSync(source, destination);
+}
+
 // Auto-seed database on fresh container volume initialization
 if (!isBuildPhase && !fs.existsSync(dbPath)) {
   // 1. Check if seed file exists in seed directory or host mount
@@ -27,7 +35,7 @@ if (!isBuildPhase && !fs.existsSync(dbPath)) {
     if (seedPath !== dbPath && fs.existsSync(seedPath)) {
       console.log(`[DB] Seeding database from: ${seedPath}`);
       try {
-        fs.copyFileSync(seedPath, dbPath);
+        safeCopyDb(seedPath, dbPath);
         seeded = true;
         break;
       } catch (e) {
@@ -47,7 +55,7 @@ if (!isBuildPhase && !fs.existsSync(dbPath)) {
       if (backups.length > 0) {
         const latestBackup = path.join(BACKUP_DIR, backups[0]);
         console.log(`[DB] Seeding database from latest backup: ${latestBackup}`);
-        fs.copyFileSync(latestBackup, dbPath);
+        safeCopyDb(latestBackup, dbPath);
       }
     } catch (e) {
       console.warn("[DB] Failed to seed from backup:", e);
@@ -55,7 +63,27 @@ if (!isBuildPhase && !fs.existsSync(dbPath)) {
   }
 }
 
-const sqlite = new Database(dbPath);
+// Clean auto-recovery from pre-incident backup before any DB connection is opened
+const recoveryMarker = path.join(DATA_DIR, ".synapse_recovered_v132");
+if (!isBuildPhase && fs.existsSync(BACKUP_DIR) && !fs.existsSync(recoveryMarker)) {
+  const backupFile = "synapse-backup-2026-11-01T08-24-37-823Z.db";
+  const backupPath = path.join(BACKUP_DIR, backupFile);
+  if (fs.existsSync(backupPath)) {
+    console.log(`[DB] Clean auto-recovery from ${backupFile} initiated before DB open...`);
+    try {
+      if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
+      if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
+      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    } catch {}
+    fs.copyFileSync(backupPath, dbPath);
+    try {
+      fs.writeFileSync(recoveryMarker, new Date().toISOString(), "utf8");
+    } catch {}
+    console.log(`[DB] Clean auto-recovery from ${backupFile} completed successfully.`);
+  }
+}
+
+const sqlite = new Database(dbPath, { timeout: 15000 });
 
 // Enable WAL mode and high-performance safety pragmas
 sqlite.pragma("journal_mode = WAL");
@@ -384,6 +412,37 @@ try {
       SET published_at = created_at
       WHERE published_at > CAST(strftime('%s', 'now') AS INTEGER) + 3600;
     `);
+
+    // 1. Reconcile read status for all items that were actively interacted with in reading_sessions
+    sqlite.exec(`
+      UPDATE feed_items
+      SET is_read = 1
+      WHERE id IN (
+        SELECT DISTINCT target_id 
+        FROM reading_sessions 
+        WHERE action IN ('read', 'skim', 'flick')
+      );
+    `);
+
+    // 2. Archive historical items older than 48 hours that were swept into unread
+    // Supports both Unix seconds (<10B) and epoch milliseconds (>=10B)
+    const nowMs = Date.now();
+    const cutoffMs = nowMs - 48 * 60 * 60 * 1000;
+    const cutoffSec = Math.floor(nowMs / 1000) - 48 * 60 * 60;
+    sqlite
+      .prepare(
+        `UPDATE feed_items
+         SET is_read = 1
+         WHERE is_read = 0
+           AND (
+             (coalesce(published_at, created_at) < 10000000000 AND coalesce(published_at, created_at) < ?)
+             OR
+             (coalesce(published_at, created_at) >= 10000000000 AND coalesce(published_at, created_at) < ?)
+           )
+           AND (is_starred = 0 OR is_starred IS NULL)
+           AND (is_work = 0 OR is_work IS NULL)`
+      )
+      .run(cutoffSec, cutoffMs);
   }
 } catch (e) {
   console.warn("Startup migration check skipped:", e);

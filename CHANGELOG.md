@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.2] - 2026-11-01
+
+### Fixed
+- **Resolved Unread Queue Inundation & Epoch Millisecond Mismatch:**
+  - Fixed timestamp unit mismatch in `src/app/api/admin/reset-stats/route.ts` where second-based calculation (`Date.now()/1000 - 48*3600`) was compared against millisecond database timestamps (`published_at`, `created_at`), causing the SQL `CASE` check to evaluate as true for all historical articles and marking every article as unread.
+  - Added automatic startup data reconciliation in `src/lib/db/index.ts` to restore `is_read = 1` for all articles with interaction records in `reading_sessions` (`read`, `skim`, `flick`), and safely archive unstarred/non-work historical items older than 48 hours as read.
+
 ## [1.3.1] - 2026-10-31
 
 ### Added

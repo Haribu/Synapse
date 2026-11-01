@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const fortyEightHoursAgo = nowSec - 48 * 60 * 60;
+    const nowMs = Date.now();
+    const fortyEightHoursAgoMs = nowMs - 48 * 60 * 60 * 1000;
 
     // 1. Take a pre-reset safety backup snapshot
     await createDatabaseBackup();
@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     // 3. Mark items published in the last 48 hours as unread (0)
     // Mark older archive items as read (1)
     // Zero out engagement duration and flags
+    // Note: Drizzle stores timestamps in milliseconds
     const result = sqlite
       .prepare(
         `
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
           read_duration_seconds = 0
     `
       )
-      .run(fortyEightHoursAgo);
+      .run(fortyEightHoursAgoMs);
 
     // 4. Count newly unread items
     const unreadCountRow = sqlite

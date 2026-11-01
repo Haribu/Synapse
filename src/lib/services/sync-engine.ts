@@ -729,7 +729,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       .run();
     sqlite
       .prepare(
-        `DELETE FROM feed_items WHERE title LIKE '%True Tiger%' OR title LIKE '%Scandalous on Road%' OR (published_at IS NOT NULL AND published_at < 1262304000000)`
+        `DELETE FROM feed_items WHERE title LIKE '%True Tiger%' OR title LIKE '%Scandalous on Road%'`
       )
       .run();
   } catch {
