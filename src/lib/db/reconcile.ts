@@ -284,7 +284,7 @@ export interface DatabaseInvariantsReport {
 }
 
 export function checkDatabaseInvariants(
-  sqlite: SqliteLike,
+  sqlite: Database.Database,
   thresholds = { feeds: 100, readingSessions: 3000, starred: 150, work: 5 }
 ): DatabaseInvariantsReport {
   try {
