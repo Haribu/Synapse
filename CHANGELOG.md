@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.11] - 2026-11-01
+
+### Added
+- **Local CI Pipeline Verifier (`scripts/verify-ci.ts`, `bun run test:ci`):**
+  - Added a unified pre-push CI test runner that replicates remote GitHub Actions checks locally: asserts frozen lockfile parity (`bun install --frozen-lockfile`), static type correctness (`bun x tsc --noEmit`), and full unit test execution (`bun test`).
+  - Integrated `scripts/verify-ci.ts` into `synapse-tester` container profile in `docker-compose.yml`, mounting `package.json`, `bun.lock`, and `tsconfig.json` read-only to catch lockfile drift before pushing.
+
+### Fixed
+- **CI Dependency & Lockfile Drift Repair (`bun.lock`):**
+  - Synchronized `bun.lock` following removal of redundant `@types/marked`, resolving `bun install --frozen-lockfile` failures on remote CI workflows.
+
 ## [1.3.10] - 2026-11-01
 
 ### Removed & Refactored

@@ -1,6 +1,6 @@
 {
   "name": "synapse",
-  "version": "1.3.10",
+  "version": "1.3.11",
   "description": "Private, AI-native RSS++ reader, newsletter curator, and research aggregator.",
   "license": "MIT",
   "author": "Harry McLaren",
@@ -27,6 +27,7 @@
     "start": "next start",
     "test": "bun test",
     "test:docker": "docker compose --profile test run --rm tester",
+    "test:ci": "bun scripts/verify-ci.ts",
     "lint": "tsc --noEmit",
     "format:check": "prettier --check .",
     "format": "prettier --write .",

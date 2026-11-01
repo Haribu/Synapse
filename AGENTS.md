@@ -34,7 +34,7 @@ Run the vast majority of operations inside the standard sandbox:
 The following actions should ONLY be executed when explicitly requested for deployment or container operations:
 
 1. **Docker Engine Management:** (`docker compose up -d --build --wait`, `docker logs`, `docker ps`).
-2. **Containerized Test Execution:** (`docker compose --profile test run --rm tester` or `docker compose --profile test build tester`). Avoids host permission prompt fatigue by running all tests and typechecks inside the isolated `synapse-tester` container.
+2. **Containerized Test Execution & Local CI Gate:** (`docker compose --profile test run --rm tester` or `bun run test:ci`). Replicates the exact GitHub Actions CI workflow locally: verifies frozen lockfile parity (`bun install --frozen-lockfile`), static typing (`bun x tsc --noEmit`), and executes the complete unit test suite in isolation. Running this prior to committing or publishing prevents broken CI runs and avoids host permission prompt fatigue.
 3. **Unified Deployment Verification:** (`bun run verify:deploy`).
 4. **UI Viewport Capture:** (`bun run verify:ui`).
 
