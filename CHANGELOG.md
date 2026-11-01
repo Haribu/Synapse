@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.10] - 2026-11-01
+
+### Removed & Refactored
+- **Purged Obsolete Admin Endpoints & Reset Scripts:**
+  - Removed dangerous legacy reset route `POST /api/admin/reset-stats` and accompanying `scripts/db-reset-v1.ts` (along with `npm run db:reset-v1`) to safeguard user reading sessions and floor invariants against accidental truncation.
+  - Removed obsolete one-time migration endpoints `POST /api/admin/import-reading-list` and `POST /api/admin/recalibrate-stats`.
+  - Removed uncalled standalone handlers `POST /api/feeds/cleanup-shorts` (fully managed by internal `sync-engine.ts`) and `POST /api/feeds/health-check` (superseded by per-feed checks).
+  - Consolidated HTML sanitization imports directly to `src/lib/utils/clean-article.ts` and deleted redundant shim `clean-html.ts`.
+  - Pruned obsolete `@types/marked` dependency from `package.json` in favor of native `marked` v18 types.
+
 ## [1.3.9] - 2026-11-01
 
 ### Fixed & Hardened

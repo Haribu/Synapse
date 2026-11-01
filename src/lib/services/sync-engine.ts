@@ -7,7 +7,7 @@ import { eq, sql, desc, and, or, ne, isNull, gte } from "drizzle-orm";
 import crypto from "crypto";
 import TurndownService from "turndown";
 import { cleanArticleMarkdown, cleanAuthor } from "@/lib/utils/clean-article";
-import { cleanArticleHtml } from "@/lib/utils/clean-html";
+import { cleanArticleHtml } from "@/lib/utils/clean-article";
 
 const turndown = new TurndownService({
   headingStyle: "atx",

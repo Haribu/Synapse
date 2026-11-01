@@ -13,7 +13,7 @@ import {
   Check,
 } from "lucide-react";
 import { decodeHtmlEntities } from "@/lib/utils/decode";
-import { cleanArticleHtml } from "@/lib/utils/clean-html";
+import { cleanArticleHtml } from "@/lib/utils/clean-article";
 import { marked } from "marked";
 import { AccessibilitySettings } from "@/lib/utils/accessibility";
 import { isSponsoredContent } from "@/lib/utils/sponsored";
