@@ -282,7 +282,49 @@ GET /api/feeds/audit
 
 ---
 
-## 4. Collaborative Intelligence & Digests (`/api/digest`)
+## 4. Reading List & Work Backlog Management (`/api/reading-list`)
+
+### Add Article or Hyperlink to Reading List / Work Backlog
+
+Save a standalone article or a hyperlink discovered within an article directly into the user's Research Inbox (`reading_list`) or Work Backlog (`isWork = true`). Saved hyperlinks are isolated from the parent article and fetch their own standalone readability content and title.
+
+```http
+POST /api/reading-list
+Content-Type: application/json
+```
+
+```json
+{
+  "url": "https://example.com/research-article",
+  "title": "Optional Title Override",
+  "sourceFeedItemId": "optional-parent-article-id",
+  "sourceContext": "Anchor text or excerpt from parent article",
+  "isWork": true
+}
+```
+
+#### Example Response
+
+```json
+{
+  "success": true,
+  "item": {
+    "id": "e3b0c442-98fc-1c14-9afb-4c760135d2d9",
+    "url": "https://example.com/research-article",
+    "title": "Extracted Article Title",
+    "sourceFeedItemId": "parent-article-id",
+    "sourceContext": "Anchor text or excerpt from parent article",
+    "isRead": false,
+    "isStarred": false,
+    "isWork": true,
+    "createdAt": "2026-11-01T17:50:00.000Z"
+  }
+}
+```
+
+---
+
+## 5. Collaborative Intelligence & Digests (`/api/digest`)
 
 ### Generate Work / Team Digest
 

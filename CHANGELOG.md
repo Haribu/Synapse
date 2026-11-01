@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.8] - 2026-11-01
+
+### Fixed & Hardened
+- **Hyperlink Reading List & Work Backlog Isolation (`src/app/api/reading-list/route.ts`, `src/lib/services/sync-engine.ts`):**
+  - Isolated saved hyperlinks from parent article content and title by enforcing strict URL parity checks (`cleanUrl(parent.url) === cleanedUrl`) across `GET` and `POST` handlers in `/api/reading-list`.
+  - Hyperlinks saved from within articles or newsletters (via `ReaderLinkMenu`) now fetch and extract their own target page title and readability content independently instead of inheriting the parent newsletter's title and entire article HTML.
+  - Implemented an automated database hygiene sweep in `sync-engine.ts` (`rehydrateAndCleanTargetedSources`) that detects contaminated historical `reading_list` entries where `rl.url != fi.url` and `(rl.title = fi.title OR rl.full_content_html = fi.full_content_html)` and heals them with clean standalone link titles and direct browser view cards.
+  - Added visual confirmation toasts in `ReaderView.tsx` ("Saved link to Work Backlog" / "Saved link to Research Inbox") for instant tactile feedback when saving links from context menus.
+  - Added comprehensive provenance isolation unit tests in `src/lib/services/reading-list.test.ts`.
+
 ## [1.3.7] - 2026-11-01
 
 ### Fixed & Hardened

@@ -110,6 +110,7 @@ export function ReaderView({
   const [tagInput, setTagInput] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSavedToast, setNotesSavedToast] = useState(false);
+  const [linkSavedToast, setLinkSavedToast] = useState<string | null>(null);
   const [notesDrawerOpen, setNotesDrawerOpen] = useState(false);
 
   // Auto-hydrate prompt state
@@ -626,6 +627,10 @@ export function ReaderView({
         }),
       });
       setLinkMenu(null);
+      setLinkSavedToast(
+        isWork ? "Saved link to Work Backlog" : "Saved link to Research Inbox"
+      );
+      setTimeout(() => setLinkSavedToast(null), 3000);
     } catch (err) {
       console.error("Failed to save to reading list", err);
     }
@@ -834,6 +839,14 @@ export function ReaderView({
         <div className="absolute top-16 right-6 z-20 bg-purple-100 dark:bg-purple-950 border border-purple-300 dark:border-purple-800 text-purple-900 dark:text-purple-200 px-4 py-2.5 rounded-xl text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
           <CheckCircle className="w-4 h-4 text-purple-600 dark:text-purple-400" />
           <span>Saved to Obsidian: {obsidianSuccess.split("/").pop()}</span>
+        </div>
+      )}
+
+      {/* Link Saved Notification Toast */}
+      {linkSavedToast && (
+        <div className="absolute top-16 right-6 z-20 bg-blue-100 dark:bg-blue-950 border border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-200 px-4 py-2.5 rounded-xl text-xs shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <span>{linkSavedToast}</span>
         </div>
       )}
 

@@ -13,6 +13,7 @@ export async function GET() {
     const items = db.select().from(readingList).orderBy(desc(readingList.createdAt)).all();
 
     // Self-healing: if any items in readingList have empty content (<50 chars) but point to a sourceFeedItemId, backfill immediately
+    // ONLY IF the item URL matches the parent item URL (saving parent article directly, not an external hyperlink)
     for (const item of items) {
       if ((!item.fullContentHtml || item.fullContentHtml.length < 50) && item.sourceFeedItemId) {
         try {
@@ -21,7 +22,11 @@ export async function GET() {
             .from(feedItems)
             .where(eq(feedItems.id, item.sourceFeedItemId))
             .get();
-          if (parent && (parent.fullContentHtml || parent.snippet)) {
+          if (
+            parent &&
+            cleanUrl(parent.url) === cleanUrl(item.url) &&
+            (parent.fullContentHtml || parent.snippet)
+          ) {
             const backfillHtml = parent.fullContentHtml || `<p>${parent.snippet}</p>`;
             const backfillMd = parent.fullContentMarkdown || parent.snippet || "";
             db.update(readingList)
@@ -82,7 +87,7 @@ export async function POST(req: Request) {
             .from(feedItems)
             .where(eq(feedItems.id, sourceFeedItemId))
             .get();
-          if (parent?.fullContentHtml) {
+          if (parent?.fullContentHtml && cleanUrl(parent.url) === cleanedUrl) {
             updateHtml = parent.fullContentHtml;
             updateMd = parent.fullContentMarkdown;
           }
@@ -111,10 +116,10 @@ export async function POST(req: Request) {
     let contentHtml = fullContentHtml || "";
     let contentMarkdown = fullContentMarkdown || "";
 
-    // 1. If content was not passed directly, check if sourceFeedItemId already has content
+    // 1. If content was not passed directly, and this saved URL matches the parent source feed item, inherit from parent
     if ((!contentHtml || contentHtml.length < 50) && sourceFeedItemId) {
       const parent = db.select().from(feedItems).where(eq(feedItems.id, sourceFeedItemId)).get();
-      if (parent) {
+      if (parent && cleanUrl(parent.url) === cleanedUrl) {
         if (parent.fullContentHtml) contentHtml = parent.fullContentHtml;
         if (parent.fullContentMarkdown) contentMarkdown = parent.fullContentMarkdown;
         if (!title && parent.title) finalTitle = parent.title;
@@ -127,7 +132,7 @@ export async function POST(req: Request) {
         const extracted = await extractReadableContent(cleanedUrl);
         if (extracted) {
           if (!title || title.trim().length === 0) {
-            finalTitle = extracted.title;
+            finalTitle = extracted.title || sourceContext || cleanedUrl;
           }
           contentHtml = extracted.contentHtml;
           contentMarkdown = extracted.contentMarkdown;
@@ -139,9 +144,9 @@ export async function POST(req: Request) {
 
     if (!contentHtml || contentHtml.trim().length === 0) {
       contentHtml = `<div class="p-6 my-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-center space-y-3">
-        <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">Bot Challenge / Verification Required</h3>
+        <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">Direct Web Link</h3>
         <p class="text-xs text-amber-800 dark:text-amber-300 max-w-md mx-auto">
-          This publisher requires interactive browser verification. Synapse does not perform automated challenge resolution.
+          ${sourceContext ? `Saved link: &ldquo;${sourceContext}&rdquo;. ` : ""}This external link can be read directly in your browser.
         </p>
         <div class="pt-2">
           <a href="${cleanedUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all">

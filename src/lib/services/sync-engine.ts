@@ -739,6 +739,54 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         `DELETE FROM feed_items WHERE title LIKE '%True Tiger%' OR title LIKE '%Scandalous on Road%'`
       )
       .run();
+
+    // Heal corrupted reading_list items where a saved hyperlink erroneously inherited its parent feed item's title/content
+    const corruptedReadingItems = sqlite
+      .prepare(
+        `SELECT rl.id, rl.url, rl.title, rl.source_context, fi.title as parent_title, fi.url as parent_url
+         FROM reading_list rl
+         JOIN feed_items fi ON rl.source_feed_item_id = fi.id
+         WHERE rl.url != fi.url AND (rl.title = fi.title OR rl.full_content_html = fi.full_content_html)`
+      )
+      .all() as Array<{
+        id: string;
+        url: string;
+        title: string;
+        source_context: string | null;
+        parent_title: string;
+        parent_url: string;
+      }>;
+
+    for (const cItem of corruptedReadingItems) {
+      let resolvedTitle = cItem.source_context?.trim() || cItem.url;
+      let resolvedHtml = `<div class="p-6 my-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-center space-y-3">
+        <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">Direct Web Link</h3>
+        <p class="text-xs text-amber-800 dark:text-amber-300 max-w-md mx-auto">
+          Saved from: &ldquo;${cItem.parent_title}&rdquo;.
+        </p>
+        <div class="pt-2">
+          <a href="${cItem.url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all">
+            <span>Open Article in Browser</span>
+          </a>
+        </div>
+      </div>`;
+      let resolvedMd = "";
+
+      try {
+        const extracted = await extractReadableContent(cItem.url);
+        if (extracted && extracted.title) {
+          resolvedTitle = extracted.title;
+          resolvedHtml = extracted.contentHtml;
+          resolvedMd = extracted.contentMarkdown;
+        }
+      } catch {}
+
+      sqlite
+        .prepare(
+          `UPDATE reading_list SET title = ?, full_content_html = ?, full_content_markdown = ? WHERE id = ?`
+        )
+        .run(resolvedTitle, resolvedHtml, resolvedMd, cItem.id);
+    }
   } catch {
     // ignore
   }
