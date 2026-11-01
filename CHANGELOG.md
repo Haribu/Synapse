@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.9] - 2026-11-01
+
+### Fixed & Hardened
+- **Reading List Context & Title Mapping Realignment (`src/components/ReaderView.tsx`, `src/app/api/reading-list/route.ts`):**
+  - Corrected parameter mapping when queuing links from `ReaderView.tsx`: passed the link anchor text as `title` and parent newsletter title (`item.title`) as `sourceContext` so research/work item feeds render accurately.
+  - Added existing-record repair in `POST /api/reading-list`: when saving a link that already exists in the database but contains contaminated parent content or titles, the endpoint automatically re-extracts readable content from the target URL and resets the title and context.
+  - Expanded in-place database hygiene in `sync-engine.ts` (`rehydrateAndCleanTargetedSources`) to detect and heal historical orphaned records where `source_feed_item_id` was null, restoring authentic article headlines (e.g. Nebulock GATES method) and stripping 50KB+ newsletter bodies.
+
 ## [1.3.8] - 2026-11-01
 
 ### Fixed & Hardened

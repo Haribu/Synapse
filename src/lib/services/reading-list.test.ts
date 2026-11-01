@@ -129,7 +129,7 @@ describe("Reading List Ingestion & Provenance Isolation", () => {
       VALUES (?, ?, ?, ?)
     `).run(parentId, parentTitle, parentUrl, parentHtml);
 
-    // Contaminated reading_list item (hyperlink that wrongly received parent title and parent HTML)
+    // Contaminated reading_list item (hyperlink that wrongly received parent title and parent HTML, with null foreign key)
     db.prepare(`
       INSERT INTO reading_list (id, url, title, source_feed_item_id, source_context, full_content_html, is_work)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -137,7 +137,7 @@ describe("Reading List Ingestion & Provenance Isolation", () => {
       "rl-corrupted-1",
       "https://target.com/research-paper",
       parentTitle,
-      parentId,
+      null, // null foreign key simulates real-world corrupted row
       "GATES method for hunting",
       parentHtml,
       1
@@ -157,12 +157,21 @@ describe("Reading List Ingestion & Provenance Isolation", () => {
       0
     );
 
-    // Run detection query
+    // Run detection query (does not rely on non-null foreign key)
     const corruptedItems = db.prepare(`
-      SELECT rl.id, rl.url, rl.title, rl.source_context, fi.title as parent_title
+      SELECT rl.id, rl.url, rl.title, rl.source_context
       FROM reading_list rl
-      JOIN feed_items fi ON rl.source_feed_item_id = fi.id
-      WHERE rl.url != fi.url AND (rl.title = fi.title OR rl.full_content_html = fi.full_content_html)
+      WHERE (
+        rl.title LIKE '%DEW #%'
+        OR rl.title LIKE '%assorted links%'
+        OR (rl.full_content_html LIKE '%Newsletter full text%' AND rl.url NOT LIKE '%dew.newsletter%')
+        OR EXISTS (
+          SELECT 1 FROM feed_items fi
+          WHERE fi.url != rl.url
+            AND (fi.title = rl.title OR fi.full_content_html = rl.full_content_html)
+        )
+      )
+      AND rl.url NOT LIKE '%dew.newsletter%'
     `).all() as any[];
 
     expect(corruptedItems.length).toBe(1);
@@ -171,15 +180,20 @@ describe("Reading List Ingestion & Provenance Isolation", () => {
 
     // Perform healing
     for (const c of corruptedItems) {
+      const parentNewsletter = c.title;
       const healedTitle = c.source_context || c.url;
-      const healedHtml = `<div class="direct-link">Saved from: ${c.parent_title}</div>`;
+      const healedSourceContext = parentNewsletter;
+      const healedHtml = `<div class="direct-link">Saved from: ${parentNewsletter}</div>`;
       db.prepare(`
-        UPDATE reading_list SET title = ?, full_content_html = ?, full_content_markdown = '' WHERE id = ?
-      `).run(healedTitle, healedHtml, c.id);
+        UPDATE reading_list 
+        SET title = ?, source_context = ?, full_content_html = ?, full_content_markdown = '' 
+        WHERE id = ?
+      `).run(healedTitle, healedSourceContext, healedHtml, c.id);
     }
 
     const healedRecord = db.prepare(`SELECT * FROM reading_list WHERE id = ?`).get("rl-corrupted-1") as any;
     expect(healedRecord.title).toBe("GATES method for hunting");
+    expect(healedRecord.source_context).toBe(parentTitle);
     expect(healedRecord.full_content_html).toContain("Saved from: DEW #172");
     expect(healedRecord.full_content_html).not.toBe(parentHtml);
 

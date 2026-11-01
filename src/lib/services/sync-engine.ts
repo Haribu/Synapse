@@ -743,26 +743,36 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     // Heal corrupted reading_list items where a saved hyperlink erroneously inherited its parent feed item's title/content
     const corruptedReadingItems = sqlite
       .prepare(
-        `SELECT rl.id, rl.url, rl.title, rl.source_context, fi.title as parent_title, fi.url as parent_url
+        `SELECT rl.id, rl.url, rl.title, rl.source_context
          FROM reading_list rl
-         JOIN feed_items fi ON rl.source_feed_item_id = fi.id
-         WHERE rl.url != fi.url AND (rl.title = fi.title OR rl.full_content_html = fi.full_content_html)`
+         WHERE (
+           rl.title LIKE '%DEW #%'
+           OR rl.title LIKE '%assorted links%'
+           OR (rl.full_content_html LIKE '%Detection Engineering Weekly%' AND rl.url NOT LIKE '%detectionengineering.net%')
+           OR EXISTS (
+             SELECT 1 FROM feed_items fi
+             WHERE fi.url != rl.url
+               AND (fi.title = rl.title OR fi.full_content_html = rl.full_content_html)
+           )
+         )
+         AND rl.url NOT LIKE '%detectionengineering.net%'
+         AND rl.url NOT LIKE '%marginalrevolution.com%'`
       )
       .all() as Array<{
         id: string;
         url: string;
         title: string;
         source_context: string | null;
-        parent_title: string;
-        parent_url: string;
       }>;
 
     for (const cItem of corruptedReadingItems) {
+      const parentNewsletterTitle = cItem.title;
       let resolvedTitle = cItem.source_context?.trim() || cItem.url;
+      let resolvedSourceContext = parentNewsletterTitle;
       let resolvedHtml = `<div class="p-6 my-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-center space-y-3">
-        <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">Direct Web Link</h3>
+        <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">${resolvedTitle}</h3>
         <p class="text-xs text-amber-800 dark:text-amber-300 max-w-md mx-auto">
-          Saved from: &ldquo;${cItem.parent_title}&rdquo;.
+          Saved from: &ldquo;${parentNewsletterTitle}&rdquo;.
         </p>
         <div class="pt-2">
           <a href="${cItem.url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all">
@@ -783,9 +793,11 @@ export async function rehydrateAndCleanTargetedSources(options?: {
 
       sqlite
         .prepare(
-          `UPDATE reading_list SET title = ?, full_content_html = ?, full_content_markdown = ? WHERE id = ?`
+          `UPDATE reading_list 
+           SET title = ?, source_context = ?, full_content_html = ?, full_content_markdown = ? 
+           WHERE id = ?`
         )
-        .run(resolvedTitle, resolvedHtml, resolvedMd, cItem.id);
+        .run(resolvedTitle, resolvedSourceContext, resolvedHtml, resolvedMd, cItem.id);
     }
   } catch {
     // ignore

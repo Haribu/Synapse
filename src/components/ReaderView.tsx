@@ -621,8 +621,9 @@ export function ReaderView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
+          title: contextText,
           sourceFeedItemId: item.id,
-          sourceContext: contextText,
+          sourceContext: item.title,
           isWork,
         }),
       });

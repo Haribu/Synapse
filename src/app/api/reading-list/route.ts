@@ -74,28 +74,51 @@ export async function POST(req: Request) {
       if (isWork !== undefined && isWork !== existing.isWork) {
         updates.isWork = Boolean(isWork);
       }
-      // If existing item is empty (<50 chars) and we now have content, backfill it!
-      if (
-        (!existing.fullContentHtml || existing.fullContentHtml.length < 50) &&
-        (fullContentHtml || sourceFeedItemId)
-      ) {
-        let updateHtml = fullContentHtml;
-        let updateMd = fullContentMarkdown;
-        if (!updateHtml && sourceFeedItemId) {
-          const parent = db
-            .select()
-            .from(feedItems)
-            .where(eq(feedItems.id, sourceFeedItemId))
-            .get();
-          if (parent?.fullContentHtml && cleanUrl(parent.url) === cleanedUrl) {
-            updateHtml = parent.fullContentHtml;
-            updateMd = parent.fullContentMarkdown;
+
+      // Check if existing record is contaminated with parent newsletter title or content
+      const isCorrupted =
+        existing.title.includes("DEW #") ||
+        existing.title.includes("assorted links") ||
+        (existing.fullContentHtml &&
+          existing.fullContentHtml.includes("Detection Engineering Weekly") &&
+          !cleanedUrl.includes("detectionengineering.net")) ||
+        (sourceFeedItemId &&
+          existing.sourceFeedItemId === sourceFeedItemId &&
+          cleanUrl(existing.url) !== cleanedUrl);
+
+      if (isCorrupted || !existing.fullContentHtml || existing.fullContentHtml.length < 50) {
+        let updateTitle = title || existing.sourceContext || cleanedUrl;
+        let updateContext = sourceContext || (existing.title.includes("DEW #") ? existing.title : null);
+        let updateHtml = "";
+        let updateMd = "";
+
+        try {
+          const extracted = await extractReadableContent(cleanedUrl);
+          if (extracted) {
+            updateTitle = extracted.title || updateTitle;
+            updateHtml = extracted.contentHtml;
+            updateMd = extracted.contentMarkdown;
           }
+        } catch {}
+
+        if (!updateHtml || updateHtml.trim().length === 0) {
+          updateHtml = `<div class="p-6 my-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl text-center space-y-3">
+            <h3 class="font-bold text-amber-900 dark:text-amber-200 text-base">${updateTitle}</h3>
+            <p class="text-xs text-amber-800 dark:text-amber-300 max-w-md mx-auto">
+              ${updateContext ? `Saved from: &ldquo;${updateContext}&rdquo;. ` : ""}This external link can be read directly in your browser.
+            </p>
+            <div class="pt-2">
+              <a href="${cleanedUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all">
+                <span>Open Article in Browser</span>
+              </a>
+            </div>
+          </div>`;
         }
-        if (updateHtml) {
-          updates.fullContentHtml = updateHtml;
-          updates.fullContentMarkdown = updateMd;
-        }
+
+        updates.title = updateTitle;
+        if (updateContext) updates.sourceContext = updateContext;
+        updates.fullContentHtml = updateHtml;
+        updates.fullContentMarkdown = updateMd;
       }
 
       if (Object.keys(updates).length > 0) {
