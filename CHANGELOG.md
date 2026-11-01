@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.7] - 2026-11-01
+
+### Fixed & Hardened
+- **Unified & Hardened User-Data Floor Invariants (`src/lib/db/reconcile.ts`, `src/lib/services/backup-service.ts`):**
+  - Unified data floor invariant checking under a single source of truth (`checkDatabaseInvariants`), eliminating duplicate and diverging query logic between `reconcile.ts` and `backup-service.ts`.
+  - Calibrated the default work items floor to `work >= 1` (reflecting active backlog items) and introduced dynamic environment variable overrides (`DATA_FLOOR_WORK`, `DATA_FLOOR_FEEDS`, `DATA_FLOOR_SESSIONS`, `DATA_FLOOR_STARRED`) with non-negative finite integer fallback parsing.
+  - Resolved false-positive 503 Service Unavailable healthcheck errors and restored container healthcheck status to `healthy`.
 
 ## [1.3.6] - 2026-11-01
 

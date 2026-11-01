@@ -283,10 +283,26 @@ export interface DatabaseInvariantsReport {
   violations: string[];
 }
 
+function parseFloor(envVal: string | undefined, defaultVal: number): number {
+  if (!envVal) return defaultVal;
+  const parsed = parseInt(envVal, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultVal;
+}
+
+export function getDefaultDataFloors() {
+  return {
+    feeds: parseFloor(process.env.DATA_FLOOR_FEEDS, 100),
+    readingSessions: parseFloor(process.env.DATA_FLOOR_SESSIONS, 3000),
+    starred: parseFloor(process.env.DATA_FLOOR_STARRED, 150),
+    work: parseFloor(process.env.DATA_FLOOR_WORK, 1),
+  };
+}
+
 export function checkDatabaseInvariants(
   sqlite: Database.Database,
-  thresholds = { feeds: 100, readingSessions: 3000, starred: 150, work: 5 }
+  thresholds?: Partial<{ feeds: number; readingSessions: number; starred: number; work: number }>
 ): DatabaseInvariantsReport {
+  const effective = { ...getDefaultDataFloors(), ...thresholds };
   try {
     const row = sqlite
       .prepare(
@@ -304,16 +320,16 @@ export function checkDatabaseInvariants(
     };
 
     const violations: string[] = [];
-    if (row.feedsCount < thresholds.feeds)
-      violations.push(`feedsCount (${row.feedsCount} < ${thresholds.feeds})`);
-    if (row.readingSessionsCount < thresholds.readingSessions)
+    if (row.feedsCount < effective.feeds)
+      violations.push(`feedsCount (${row.feedsCount} < ${effective.feeds})`);
+    if (row.readingSessionsCount < effective.readingSessions)
       violations.push(
-        `readingSessionsCount (${row.readingSessionsCount} < ${thresholds.readingSessions})`
+        `readingSessionsCount (${row.readingSessionsCount} < ${effective.readingSessions})`
       );
-    if (row.starredTotalCount < thresholds.starred)
-      violations.push(`starredTotalCount (${row.starredTotalCount} < ${thresholds.starred})`);
-    if (row.workTotalCount < thresholds.work)
-      violations.push(`workTotalCount (${row.workTotalCount} < ${thresholds.work})`);
+    if (row.starredTotalCount < effective.starred)
+      violations.push(`starredTotalCount (${row.starredTotalCount} < ${effective.starred})`);
+    if (row.workTotalCount < effective.work)
+      violations.push(`workTotalCount (${row.workTotalCount} < ${effective.work})`);
 
     return {
       healthy: violations.length === 0,

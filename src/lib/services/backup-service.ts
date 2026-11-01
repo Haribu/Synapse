@@ -1,6 +1,10 @@
 import path from "path";
 import fs from "fs";
 import { sqlite } from "@/lib/db";
+import {
+  checkDatabaseInvariants,
+  type DatabaseInvariantsReport,
+} from "@/lib/db/reconcile";
 
 const BACKUP_DIR = process.env.SYNAPSE_BACKUP_DIR || path.join(process.cwd(), "backups");
 
@@ -28,61 +32,17 @@ export function ensureBackupDir(): string {
   return BACKUP_DIR;
 }
 
-export interface DataInvariantsReport {
-  healthy: boolean;
-  feedsCount: number;
-  readingSessionsCount: number;
-  starredTotalCount: number;
-  workTotalCount: number;
-  violations: string[];
-}
+export type DataInvariantsReport = DatabaseInvariantsReport;
 
 /**
  * Verify that core user-data floors are intact before rotating backups or passing deploy checks.
+ * Delegates to unified checkDatabaseInvariants with environmental calibration.
  */
-export function verifyDataInvariants(customDb: any = sqlite): DataInvariantsReport {
-  try {
-    const row = customDb
-      .prepare(
-        `SELECT
-          (SELECT count(*) FROM feeds) AS feedsCount,
-          (SELECT count(*) FROM reading_sessions) AS readingSessionsCount,
-          ((SELECT count(*) FROM feed_items WHERE is_starred = 1) + (SELECT count(*) FROM reading_list WHERE is_starred = 1)) AS starredTotalCount,
-          ((SELECT count(*) FROM feed_items WHERE is_work = 1) + (SELECT count(*) FROM reading_list WHERE is_work = 1)) AS workTotalCount`
-      )
-      .get() as {
-      feedsCount: number;
-      readingSessionsCount: number;
-      starredTotalCount: number;
-      workTotalCount: number;
-    };
-
-    const violations: string[] = [];
-    if (row.feedsCount < 100) violations.push(`feedsCount (${row.feedsCount} < 100)`);
-    if (row.readingSessionsCount < 3000)
-      violations.push(`readingSessionsCount (${row.readingSessionsCount} < 3000)`);
-    if (row.starredTotalCount < 150)
-      violations.push(`starredTotalCount (${row.starredTotalCount} < 150)`);
-    if (row.workTotalCount < 5) violations.push(`workTotalCount (${row.workTotalCount} < 5)`);
-
-    return {
-      healthy: violations.length === 0,
-      feedsCount: row.feedsCount,
-      readingSessionsCount: row.readingSessionsCount,
-      starredTotalCount: row.starredTotalCount,
-      workTotalCount: row.workTotalCount,
-      violations,
-    };
-  } catch (err: any) {
-    return {
-      healthy: false,
-      feedsCount: 0,
-      readingSessionsCount: 0,
-      starredTotalCount: 0,
-      workTotalCount: 0,
-      violations: [err.message],
-    };
-  }
+export function verifyDataInvariants(
+  customDb: any = sqlite,
+  thresholds?: Partial<{ feeds: number; readingSessions: number; starred: number; work: number }>
+): DataInvariantsReport {
+  return checkDatabaseInvariants(customDb, thresholds);
 }
 
 /**

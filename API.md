@@ -320,7 +320,7 @@ GET /api/health
 ```json
 {
   "status": "ok",
-  "version": "1.1.5",
+  "version": "1.3.7",
   "uptime": 142,
   "db": "healthy",
   "hygiene": {
@@ -328,7 +328,15 @@ GET /api/health
     "cssSnippetLeaks": 0,
     "openFeedbackCount": 0
   },
-  "timestamp": "2026-10-28T09:40:00.000Z"
+  "invariants": {
+    "healthy": true,
+    "feedsCount": 181,
+    "readingSessionsCount": 3238,
+    "starredTotalCount": 167,
+    "workTotalCount": 4,
+    "violations": []
+  },
+  "timestamp": "2026-11-01T17:20:00.000Z"
 }
 ```
 

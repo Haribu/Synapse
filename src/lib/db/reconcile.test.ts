@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { reconcileUserData, checkDatabaseInvariants } from "./reconcile";
+import { reconcileUserData, checkDatabaseInvariants, getDefaultDataFloors } from "./reconcile";
 
 describe("reconcileUserData", () => {
   let db: InstanceType<typeof Database>;
@@ -181,5 +181,26 @@ describe("reconcileUserData", () => {
     });
     expect(goodReport.healthy).toBe(true);
     expect(goodReport.violations.length).toBe(0);
+  });
+
+  it("handles environment variable floor overrides cleanly", () => {
+    const originalEnv = process.env.DATA_FLOOR_WORK;
+    try {
+      process.env.DATA_FLOOR_WORK = "10";
+      const floors = getDefaultDataFloors();
+      expect(floors.work).toBe(10);
+      expect(floors.feeds).toBe(100);
+
+      // Verify that invalid env string safely falls back to default
+      process.env.DATA_FLOOR_WORK = "not-a-number";
+      const fallbackFloors = getDefaultDataFloors();
+      expect(fallbackFloors.work).toBe(1);
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.DATA_FLOOR_WORK = originalEnv;
+      } else {
+        delete process.env.DATA_FLOOR_WORK;
+      }
+    }
   });
 });
