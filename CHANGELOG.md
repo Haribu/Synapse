@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] - 2026-10-30
+## [1.3.1] - 2026-10-31
+
+### Added
+- **Save to Work Backlog Action on Floating Link Menu (`ReaderLinkMenu.tsx`):**
+  - Added "Save to Work Backlog" button with `Briefcase` icon to the floating link popover menu in `ReaderLinkMenu.tsx`.
+  - Wired link menu action in `ReaderView.tsx` to `handleSaveLinkToReadingList(url, text, true)` and updated `POST /api/reading-list` to support `isWork: true` on both new and existing items so links clicked in newsletters (e.g. DEW) immediately route into the work digest backlog.
+
+### Fixed
+- **Inline Video Embed Stabilization & Overlay Elimination (`ReaderView.tsx`, `clean-article.ts`, `globals.css`):**
+  - Resolved floating/hovering video overlay issue on scroll in Ars Technica and publisher articles by unwrapping `ars-video-container` and neutralizing escaped `class="absolute"` / `fixed` styling on YouTube iframes in `clean-article.ts`.
+  - Styled `.reader-content iframe` in `globals.css` with a stable `width: 100% !important; aspect-ratio: 16 / 9; max-width: 100% !important;` so inline videos always retain responsive dimensions and never collapse or detach.
+  - Scoped the top hero video player in `ReaderView.tsx` strictly to genuine video feeds and video items (`mediaType === 'video'` or `videoId`), ensuring text articles with inline video clips preserve their clips in their natural editorial context.
+- **Leading Newsletter Sponsor & Banner Stripping (`clean-article.ts`):**
+  - Stripped leading newsletter sponsor cards (e.g. OnlyCFO Brex promo) and accompanying sponsor banner images across both `cleanArticleMarkdown` and `cleanArticleHtml`.
+- **Leading Publication Front Matter & Metadata Stripping (`clean-article.ts`):**
+  - Stripped leading author bylines with profile links, standalone comments counter links, share/print action bars, and issue volume markers across Markdown and HTML cleaners (e.g. Foreign Affairs articles like "Putin's Strategy Is Working"), delivering a clean single-line slug and heading before article prose.
+- **Dark Reading Feed URL Healing & 2005 Article Purge (`sync-engine.ts`):**
+  - Healed legacy/broken Dark Reading feed URLs in SQLite to the official HTTPS endpoint `https://www.darkreading.com/rss.xml`.
+  - Purged corrupted 2005 historical items ("Last Days of The True Tiger Blog!!", "Scandalous on Road") during database maintenance sweep.
+  - Enforced a strict 3-year publication date guard in `syncFeed` to prevent ancient archived syndication items from ever flooding the unread feed.
 
 ### Added
 - **Hardware-Bound WebAuthn Passkeys & RFC 9449 DPoP Token Defense:**

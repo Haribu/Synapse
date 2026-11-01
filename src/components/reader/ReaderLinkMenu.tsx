@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Bookmark, Copy, ExternalLink } from "lucide-react";
+import { Bookmark, Briefcase, Copy, ExternalLink } from "lucide-react";
 
 export interface LinkMenuState {
   visible: boolean;
@@ -15,12 +15,14 @@ export interface ReaderLinkMenuProps {
   linkMenu: LinkMenuState | null;
   onClose: () => void;
   onSaveLinkToReadingList: (url: string, text: string) => void;
+  onSaveLinkToWorkBacklog?: (url: string, text: string) => void;
 }
 
 export function ReaderLinkMenu({
   linkMenu,
   onClose,
   onSaveLinkToReadingList,
+  onSaveLinkToWorkBacklog,
 }: ReaderLinkMenuProps) {
   if (!linkMenu) return null;
 
@@ -53,6 +55,16 @@ export function ReaderLinkMenu({
         <Bookmark className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
         <span>Save to Research Inbox</span>
       </button>
+
+      {onSaveLinkToWorkBacklog && (
+        <button
+          onClick={() => onSaveLinkToWorkBacklog(linkMenu.url, linkMenu.text)}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded-md transition-colors font-medium"
+        >
+          <Briefcase className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+          <span>Save to Work Backlog</span>
+        </button>
+      )}
 
       <button
         onClick={() => {

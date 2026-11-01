@@ -47,8 +47,15 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { url, title, sourceFeedItemId, sourceContext, fullContentHtml, fullContentMarkdown } =
-      body;
+    const {
+      url,
+      title,
+      sourceFeedItemId,
+      sourceContext,
+      fullContentHtml,
+      fullContentMarkdown,
+      isWork,
+    } = body;
 
     if (!url) {
       return NextResponse.json({ error: "url is required" }, { status: 400 });
@@ -58,6 +65,10 @@ export async function POST(req: Request) {
     const existing = db.select().from(readingList).where(eq(readingList.url, cleanedUrl)).get();
 
     if (existing) {
+      const updates: Record<string, any> = {};
+      if (isWork !== undefined && isWork !== existing.isWork) {
+        updates.isWork = Boolean(isWork);
+      }
       // If existing item is empty (<50 chars) and we now have content, backfill it!
       if (
         (!existing.fullContentHtml || existing.fullContentHtml.length < 50) &&
@@ -77,14 +88,19 @@ export async function POST(req: Request) {
           }
         }
         if (updateHtml) {
-          db.update(readingList)
-            .set({ fullContentHtml: updateHtml, fullContentMarkdown: updateMd })
-            .where(eq(readingList.id, existing.id))
-            .run();
-          existing.fullContentHtml = updateHtml;
-          existing.fullContentMarkdown = updateMd;
+          updates.fullContentHtml = updateHtml;
+          updates.fullContentMarkdown = updateMd;
         }
       }
+
+      if (Object.keys(updates).length > 0) {
+        db.update(readingList)
+          .set(updates)
+          .where(eq(readingList.id, existing.id))
+          .run();
+        Object.assign(existing, updates);
+      }
+
       return NextResponse.json({ success: true, item: existing, existed: true });
     }
 
@@ -145,6 +161,7 @@ export async function POST(req: Request) {
       fullContentMarkdown: contentMarkdown,
       isRead: false,
       isStarred: false,
+      isWork: Boolean(body.isWork),
       userNotes: body.userNotes || null,
       tags: Array.isArray(body.tags) ? body.tags.join(",") : body.tags || null,
       createdAt: now,

@@ -256,15 +256,43 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     "\n"
   );
 
-  // 4h. Strip leading newsletter sponsored header blocks (e.g. ByteByteGo Datadog sponsor card)
+  // 4h. Strip leading newsletter sponsored header blocks (e.g. ByteByteGo Datadog sponsor card, OnlyCFO Brex card)
   md = md.replace(
     /^#{1,6}\s*\[?[^\]\n]*\(Sponsored\)[^\]\n]*\]?(?:\([^\)]+\))?\s*\n+(?:\[\s*!?\s*\]\([^\)]+\)\s*\n*)*\n*/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:\[?\s*!\[[^\]]*\]\([^\)]+\)\s*\]?(?:\([^\)]*\))?\s*\n+)(?=(?:Today[’']s|This)\s+(?:newsletter|issue|edition|post|article)\s+is\s+(?:brought to you|sponsored)\s+by)/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:Today[’']s|This)\s+(?:newsletter|issue|edition|post|article)\s+is\s+(?:brought to you|sponsored)\s+by[^\n]*(?:\n+[^\n#]+)*\n*/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:Sponsored by|Presented by|A message from (?:our|the) sponsor:?)[^\n]*(?:\n+[^\n#]+)*\n*/gim,
     ""
   );
 
   // 4i. Strip Foreign Affairs & Carnegie issue date stamps, author credentials, photo credits, and "More by [Author]" lists
   md = md.replace(
     /^(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\/[A-Za-z]+\s+\d{4}\s+)?Published on\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*\n+/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:By\s+)?\[?[A-Za-z\s\.-]+\]?\((?:https?:\/\/[^\)]*\/authors?\/[^\)]*|\/authors?\/[^\)]*)\)\s*\n*/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:\[?\d+\s*Comments?\]?(?:\([^\)]*\))?|\d+\s*Comments?)\s*\n*/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:Share|Save|Print|Download|Listen|Pocket)(?:\s*\|\s*(?:Share|Save|Print|Download|Listen|Pocket))+\s*\n*/gim,
+    ""
+  );
+  md = md.replace(
+    /^(?:Volume\s+\d+|Issue\s+\d+|Vol\.\s*\d+)[^\n]*\n*/gim,
     ""
   );
   md = md.replace(
@@ -783,7 +811,19 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     .replace(
       /<iframe(?=[^>]*src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\/)(?![^>]*referrerpolicy)([^>]*?)(\/?>)/gi,
       '<iframe$1 referrerpolicy="strict-origin-when-cross-origin"$2'
-    );
+    )
+    // 3a-2. Clean Ars Technica and publisher video containers: unwrap outer ars-video-container and neutralize class="absolute"
+    .replace(
+      /<div[^>]*class=["'][^"']*ars-video-container[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi,
+      "$1"
+    )
+    .replace(/<iframe\b([^>]*?)>/gi, (match, attrs) => {
+      if (/src=["']https:\/\/(?:www\.)?(?:youtube\.com|youtube-nocookie\.com)\/embed\//i.test(attrs)) {
+        const cleanedAttrs = attrs.replace(/\bclass=["'][^"']*\b(?:absolute|fixed)\b[^"']*["']/gi, 'class="w-full h-full"');
+        return `<iframe${cleanedAttrs}>`;
+      }
+      return match;
+    });
 
   // 3b. XSS Defense: Strip all inline DOM event handlers (e.g. onerror, onload, onclick, onmouseover)
   html = html.replace(/\s+on[a-zA-Z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, "");
@@ -806,7 +846,7 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
   // 4b. Enforce referrerpolicy="no-referrer" on all article <img> tags to bypass cross-origin hotlink protections
   html = html.replace(
     /<img\b(?![^>]*\breferrerpolicy\b)([^>]*?)(\/?>)/gi,
-    '<img$1 referrerpolicy="no-referrer"$2>'
+    '<img$1 referrerpolicy="no-referrer"$2'
   );
 
   // 4c. Remap Cloudflare-blocked Marginal Revolution image mirrors to unblocked original source (Adam Nash Census chart)
@@ -958,7 +998,32 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
   );
   html = html.replace(/<aside[^>]*(?:sponsor|partner|promoted)[^>]*>[\s\S]*?<\/aside>/gi, "");
   html = html.replace(
-    /<p>\s*<em>\s*(?:Sponsored by|Presented by|This article is sponsored by|This post is brought to you by|A message from our sponsor)[\s\S]*?<\/em>\s*<\/p>/gi,
+    /<p>\s*<a[^>]*>\s*<img[^>]*>\s*<\/a>\s*<\/p>\s*(?=<p>\s*(?:<em>)?\s*(?:Today[’']s|This)?\s*(?:newsletter|issue|edition|post|article)?\s*(?:is\s+)?(?:brought to you|sponsored|presented)\s+by)/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:<em>)?\s*(?:Today[’']s|This)?\s*(?:newsletter|issue|edition|post|article)?\s*(?:is\s+)?(?:brought to you|sponsored|presented)\s+by[\s\S]*?<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:<em>)?\s*(?:Sponsored by|Presented by|This article is sponsored by|This post is brought to you by|A message from (?:our|the) sponsor:?)[\s\S]*?(?:<\/em>)?\s*<\/p>/gi,
+    ""
+  );
+  // Strip Foreign Affairs & publication front matter: author bylines, comments links, action bars, issue volume
+  html = html.replace(
+    /<p>\s*(?:By\s+)?<a[^>]*href=["'][^"']*\/(?:author|authors|people|profile|contributor)\/[^"']*["'][^>]*>[^<]*<\/a>\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:<a[^>]*>)?\s*\d+\s*Comments?\s*(?:<\/a>)?\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:<a[^>]*>)?\s*(?:Share|Save|Print|Download|Listen)(?:\s*<\/a>)?(?:\s*\|\s*(?:<a[^>]*>)?\s*(?:Share|Save|Print|Download|Listen)(?:\s*<\/a>)?)+\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:Volume\s+\d+|Issue\s+\d+|Vol\.\s*\d+)[^<]*<\/p>/gi,
     ""
   );
 

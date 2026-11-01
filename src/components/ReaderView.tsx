@@ -608,8 +608,12 @@ export function ReaderView({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // Save Link to Reading List
-  const handleSaveLinkToReadingList = async (url: string, contextText: string) => {
+  // Save Link to Reading List or Work Backlog
+  const handleSaveLinkToReadingList = async (
+    url: string,
+    contextText: string,
+    isWork = false
+  ) => {
     try {
       await fetch("/api/reading-list", {
         method: "POST",
@@ -618,6 +622,7 @@ export function ReaderView({
           url,
           sourceFeedItemId: item.id,
           sourceContext: contextText,
+          isWork,
         }),
       });
       setLinkMenu(null);
@@ -626,12 +631,17 @@ export function ReaderView({
     }
   };
 
+  // Only render top hero video player if this item is explicitly a video feed item or YouTube URL.
+  // Standard text articles with inline YouTube embeds retain their embeds in-situ.
   const effectiveVideoId =
-    item.videoId ||
-    item.url?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] ||
-    (currentFullHtml || "").match(
-      /(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
-    )?.[1];
+    item.mediaType === "video" || item.videoId
+      ? item.videoId ||
+        item.url?.match(
+          /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+        )?.[1]
+      : item.url?.match(
+            /^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+          )?.[1] || null;
 
   let displayHtml = cleanArticleHtml(currentFullHtml || item.snippet || "", item.title);
   if ((!displayHtml || displayHtml.trim().length < 50) && item.fullContentMarkdown) {
@@ -1153,6 +1163,7 @@ export function ReaderView({
         linkMenu={linkMenu}
         onClose={() => setLinkMenu(null)}
         onSaveLinkToReadingList={handleSaveLinkToReadingList}
+        onSaveLinkToWorkBacklog={(url, text) => handleSaveLinkToReadingList(url, text, true)}
       />
 
       {/* Mobile One-Handed Bottom Thumb Bar */}

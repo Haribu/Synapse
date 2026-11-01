@@ -291,4 +291,79 @@ Ok, got it`;
     expect(cleanedMd).not.toContain("marginalrevolution.com/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.webp");
     expect(cleanedMd).toContain("adamnash.blog/wp-content/uploads/2026/10/us-household-median-net-worth-by-age-2024-3.jpg");
   });
+
+  it("unwraps ars-video-container and neutralizes absolute positioning on YouTube iframes (Bug 30/10/2026)", () => {
+    const rawHtml = `<div class="ars-video-container"><div class="relative"><iframe class="absolute inset-0" src="https://www.youtube.com/embed/dQw4w9WgXcQ" allowfullscreen=""></iframe></div></div>
+<p>Staff members share their favourite memories of Patrick Stewart.</p>`;
+
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Oh captain, our captain: Ars staff remembers Patrick Stewart");
+
+    expect(cleanedHtml).not.toContain("ars-video-container");
+    expect(cleanedHtml).not.toContain('class="absolute inset-0"');
+    expect(cleanedHtml).toContain('src="https://www.youtube.com/embed/dQw4w9WgXcQ"');
+    expect(cleanedHtml).toContain("Staff members share their favourite memories of Patrick Stewart.");
+  });
+
+  it("strips leading newsletter sponsored blocks and sponsor banner images (Bug 31/10/2026)", () => {
+    const rawMd = `[![Brex Logo](https://cdn.substack.com/image/fetch/brex-banner.png)](https://www.brex.com)
+
+Today's newsletter is brought to you by [Brex](https://www.brex.com) - The AI platform for finance teams.
+
+# A $300M Earnout Goes Poof 🫠 | Pepsi vs Poppi
+
+When Pepsi acquired Poppi, everyone celebrated the $300M earnout. But accounting disclosures show the truth.`;
+
+    const rawHtml = `<div>
+<p><a href="https://www.brex.com"><img src="https://cdn.substack.com/image/fetch/brex-banner.png" alt="Brex Logo"></a></p>
+<p>Today's newsletter is brought to you by <a href="https://www.brex.com">Brex</a> - The AI platform for finance teams.</p>
+<h1>A $300M Earnout Goes Poof 🫠 | Pepsi vs Poppi</h1>
+<p>When Pepsi acquired Poppi, everyone celebrated the $300M earnout. But accounting disclosures show the truth.</p>
+</div>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "A $300M Earnout Goes Poof 🫠 | Pepsi vs Poppi");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "A $300M Earnout Goes Poof 🫠 | Pepsi vs Poppi");
+
+    expect(cleanedMd).not.toContain("brex-banner.png");
+    expect(cleanedMd).not.toContain("brought to you by");
+    expect(cleanedMd).toContain("When Pepsi acquired Poppi, everyone celebrated the $300M earnout.");
+
+    expect(cleanedHtml).not.toContain("brex-banner.png");
+    expect(cleanedHtml).not.toContain("brought to you by");
+    expect(cleanedHtml).toContain("When Pepsi acquired Poppi, everyone celebrated the $300M earnout.");
+  });
+
+  it("strips Foreign Affairs leading front matter (author byline, comments count, share/print action bars) (Bug 31/10/2026)", () => {
+    const rawMd = `By [Michael McFaul](https://www.foreignaffairs.com/authors/michael-mcfaul)
+
+[14 Comments](https://www.foreignaffairs.com/comments)
+
+Share | Save | Print | Download
+
+Volume 104, Number 2
+
+Despite battlefield setbacks, the Kremlin believes its endurance will outlast Western resolve.`;
+
+    const rawHtml = `<div>
+<p><a href="https://www.foreignaffairs.com/authors/michael-mcfaul">Michael McFaul</a></p>
+<p><a href="#comments">14 Comments</a></p>
+<p><a href="#">Share</a> | <a href="#">Save</a> | <a href="#">Print</a></p>
+<p>Volume 104, Number 2</p>
+<p>Despite battlefield setbacks, the Kremlin believes its endurance will outlast Western resolve.</p>
+</div>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Putin’s Strategy Is Working");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Putin’s Strategy Is Working");
+
+    expect(cleanedMd).not.toContain("Michael McFaul");
+    expect(cleanedMd).not.toContain("14 Comments");
+    expect(cleanedMd).not.toContain("Share | Save | Print");
+    expect(cleanedMd).not.toContain("Volume 104");
+    expect(cleanedMd).toContain("Despite battlefield setbacks, the Kremlin believes its endurance will outlast Western resolve.");
+
+    expect(cleanedHtml).not.toContain("Michael McFaul");
+    expect(cleanedHtml).not.toContain("14 Comments");
+    expect(cleanedHtml).not.toContain("Share");
+    expect(cleanedHtml).not.toContain("Volume 104");
+    expect(cleanedHtml).toContain("Despite battlefield setbacks, the Kremlin believes its endurance will outlast Western resolve.");
+  });
 });

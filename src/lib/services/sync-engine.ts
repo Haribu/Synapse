@@ -208,7 +208,13 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
       // Some feeds (event listings) use the event date as pubDate. A date more than
       // an hour ahead of now is treated as unknown and falls back to the sync time.
       const futureCutoffMs = Date.now() + 60 * 60 * 1000;
+      const threeYearsAgoMs = Date.now() - 3 * 365 * 86400 * 1000;
       for (const item of itemsToSync) {
+        // Guard against ancient historical articles (> 3 years old) infiltrating the feed
+        if (item.publishedAt && item.publishedAt.getTime() < threeYearsAgoMs) {
+          continue;
+        }
+
         const isFutureDated = !!item.publishedAt && item.publishedAt.getTime() > futureCutoffMs;
         const effectivePublishedAt = isFutureDated ? now : (item.publishedAt ?? null);
 
@@ -714,6 +720,16 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     sqlite
       .prepare(
         `UPDATE feeds SET feed_url = 'https://feeds.feedburner.com/TrendMicroSimplySecurity', error_count = 0, last_error = NULL WHERE feed_url = 'http://feeds.trendmicro.com/TrendMicroSimplySecurity'`
+      )
+      .run();
+    sqlite
+      .prepare(
+        `UPDATE feeds SET feed_url = 'https://www.darkreading.com/rss.xml', error_count = 0, last_error = NULL WHERE feed_url LIKE '%darkreading%' OR title LIKE '%Dark Reading%'`
+      )
+      .run();
+    sqlite
+      .prepare(
+        `DELETE FROM feed_items WHERE title LIKE '%True Tiger%' OR title LIKE '%Scandalous on Road%' OR (published_at IS NOT NULL AND published_at < 1262304000000)`
       )
       .run();
   } catch {
