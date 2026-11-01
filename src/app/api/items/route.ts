@@ -211,8 +211,8 @@ export async function GET(req: Request) {
       .offset(offset)
       .all();
 
-    // If viewing starred articles (not videos) without feed/category constraints, include starred readingList items
-    if (starredOnly && textOnly && !feedId && !category) {
+    // If viewing starred articles (not video-only) without feed/category constraints, include starred readingList items
+    if (starredOnly && !videoOnly && !feedId && !category) {
       const rlStarred = db
         .select()
         .from(readingList)
@@ -221,8 +221,8 @@ export async function GET(req: Request) {
         .map((rl) => ({
           id: rl.id,
           feedId: null,
-          feedTitle: rl.sourceContext ? `Research: ${rl.sourceContext}` : "Research Inbox",
-          feedCategory: "Research",
+          feedTitle: rl.sourceContext ? `Research: ${rl.sourceContext}` : "Read Later",
+          feedCategory: "Read Later",
           feedEditorialType: "independent" as const,
           title: rl.title,
           url: rl.url,

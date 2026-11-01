@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.3] - 2026-11-01
+
+### Fixed & Hardened
+- **Data Protection & Reconciliation Layer (`src/lib/db/reconcile.ts`, `src/lib/db/index.ts`):**
+  - Permanently removed dangerous pre-boot backup overwrites that risked unlinking and replacing the active SQLite database on startup.
+  - Implemented an idempotent data reconciliation engine on boot: ensures all reading list items tagged `read-later` or `feedly-import` maintain `is_starred = 1`, restores user-flagged Tesco Work Digest items across `feed_items` and `reading_list`, restores missing historical starred articles from host seed/backups, and syncs exported literature notes from the mounted Obsidian vault.
+- **Unified Starred Query in Reader API (`src/app/api/items/route.ts`):**
+  - Updated `GET /api/items` with `starredOnly=true` so that text article requests combine both `feed_items` and `reading_list` (where `is_starred = true`), ensuring all saved text articles and newsletters render seamlessly in "Read Later (Articles)".
+
 ## [1.3.2] - 2026-11-01
 
 ### Fixed

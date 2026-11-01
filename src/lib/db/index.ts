@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 import { WELCOME_FEED, WELCOME_ARTICLE } from "@/lib/data/welcome-guide";
+import { reconcileUserData } from "./reconcile";
 import path from "path";
 import fs from "fs";
 
@@ -60,26 +61,6 @@ if (!isBuildPhase && !fs.existsSync(dbPath)) {
     } catch (e) {
       console.warn("[DB] Failed to seed from backup:", e);
     }
-  }
-}
-
-// Clean auto-recovery from pre-incident backup before any DB connection is opened
-const recoveryMarker = path.join(DATA_DIR, ".synapse_recovered_v132");
-if (!isBuildPhase && fs.existsSync(BACKUP_DIR) && !fs.existsSync(recoveryMarker)) {
-  const backupFile = "synapse-backup-2026-11-01T08-24-37-823Z.db";
-  const backupPath = path.join(BACKUP_DIR, backupFile);
-  if (fs.existsSync(backupPath)) {
-    console.log(`[DB] Clean auto-recovery from ${backupFile} initiated before DB open...`);
-    try {
-      if (fs.existsSync(`${dbPath}-wal`)) fs.unlinkSync(`${dbPath}-wal`);
-      if (fs.existsSync(`${dbPath}-shm`)) fs.unlinkSync(`${dbPath}-shm`);
-      if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-    } catch {}
-    fs.copyFileSync(backupPath, dbPath);
-    try {
-      fs.writeFileSync(recoveryMarker, new Date().toISOString(), "utf8");
-    } catch {}
-    console.log(`[DB] Clean auto-recovery from ${backupFile} completed successfully.`);
   }
 }
 
@@ -446,6 +427,13 @@ try {
   }
 } catch (e) {
   console.warn("Startup migration check skipped:", e);
+}
+
+// 3. User Data Reconciliation & Anti-Loss Protection Layer
+try {
+  reconcileUserData(sqlite);
+} catch (e) {
+  console.warn("[DB] User data reconciliation skipped:", e);
 }
 
 export const db = drizzle(sqlite, { schema });
