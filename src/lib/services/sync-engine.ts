@@ -561,10 +561,17 @@ export async function syncAllFeeds(options?: {
       }
     );
 
-    // Trigger non-blocking atomic backup snapshot if new articles were ingested
+    // Trigger non-blocking atomic backup snapshot if new articles were ingested and last snapshot is >= 6h old
     if (newArticlesTotal > 0) {
       import("./backup-service")
-        .then(({ createDatabaseBackup }) => createDatabaseBackup())
+        .then(({ createDatabaseBackup, listBackups }) => {
+          const existing = listBackups();
+          const latestMs = existing[0] ? new Date(existing[0].createdAt).getTime() : 0;
+          const sixHoursMs = 6 * 60 * 60 * 1000;
+          if (Date.now() - latestMs >= sixHoursMs) {
+            return createDatabaseBackup();
+          }
+        })
         .catch((e) =>
           logger.warn("SyncEngine", `Automated post-sync backup skipped: ${e.message}`)
         );

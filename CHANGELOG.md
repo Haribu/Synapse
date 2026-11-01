@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.6] - 2026-11-01
+
+### Added
+- **Automated Release & Daily-Anchor Backups (`src/lib/services/backup-service.ts`, `src/app/api/health/route.ts`):** Automatically creates an atomic `VACUUM INTO` snapshot whenever `APP_VERSION` increments, throttles post-sync snapshots to once every 6 hours, refuses to prune historical backups if user-data floors or file sizes drop, and always retains a `>=24h` daily anchor snapshot.
+- **User-Data Floor Invariant Gates (`src/lib/db/reconcile.ts`, `scripts/verify-deploy.ts`):** Enforces floor invariants (`feeds >= 100`, `reading_sessions >= 3000`, `starred >= 150`, `work >= 5`) in `/api/health` and `bun run verify:deploy`.
+
 ## [1.3.5] - 2026-11-01
 
 ### Fixed

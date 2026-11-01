@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { reconcileUserData } from "./reconcile";
+import { reconcileUserData, checkDatabaseInvariants } from "./reconcile";
 
 describe("reconcileUserData", () => {
   let db: InstanceType<typeof Database>;
@@ -151,5 +151,35 @@ describe("reconcileUserData", () => {
     expect(fi.is_engaged_read).toBe(1);
     expect(fi.read_duration_seconds).toBe(180);
     expect(fi.work_dispatched_at).toBe(1791630000000);
+  });
+
+  it("verifies database user-data floor invariants", () => {
+    db.exec(`CREATE TABLE feeds (id TEXT PRIMARY KEY, title TEXT);`);
+    const badReport = checkDatabaseInvariants(db as any, {
+      feeds: 1,
+      readingSessions: 1,
+      starred: 1,
+      work: 1,
+    });
+    expect(badReport.healthy).toBe(false);
+    expect(badReport.violations.length).toBe(4);
+
+    db.prepare(`INSERT INTO feeds (id, title) VALUES ('f1', 'Test Feed')`).run();
+    db.prepare(
+      `INSERT INTO reading_sessions (id, target_type, target_id, duration_seconds, word_count, action, timestamp)
+       VALUES ('rs1', 'feed_item', 'fi-1', 120, 400, 'read', 1791790215)`
+    ).run();
+    db.prepare(
+      `INSERT INTO feed_items (id, title, url, is_starred, is_work) VALUES ('fi-1', 'Test', 'https://example.com', 1, 1)`
+    ).run();
+
+    const goodReport = checkDatabaseInvariants(db as any, {
+      feeds: 1,
+      readingSessions: 1,
+      starred: 1,
+      work: 1,
+    });
+    expect(goodReport.healthy).toBe(true);
+    expect(goodReport.violations.length).toBe(0);
   });
 });

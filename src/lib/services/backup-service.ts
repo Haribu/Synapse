@@ -28,6 +28,63 @@ export function ensureBackupDir(): string {
   return BACKUP_DIR;
 }
 
+export interface DataInvariantsReport {
+  healthy: boolean;
+  feedsCount: number;
+  readingSessionsCount: number;
+  starredTotalCount: number;
+  workTotalCount: number;
+  violations: string[];
+}
+
+/**
+ * Verify that core user-data floors are intact before rotating backups or passing deploy checks.
+ */
+export function verifyDataInvariants(customDb: any = sqlite): DataInvariantsReport {
+  try {
+    const row = customDb
+      .prepare(
+        `SELECT
+          (SELECT count(*) FROM feeds) AS feedsCount,
+          (SELECT count(*) FROM reading_sessions) AS readingSessionsCount,
+          ((SELECT count(*) FROM feed_items WHERE is_starred = 1) + (SELECT count(*) FROM reading_list WHERE is_starred = 1)) AS starredTotalCount,
+          ((SELECT count(*) FROM feed_items WHERE is_work = 1) + (SELECT count(*) FROM reading_list WHERE is_work = 1)) AS workTotalCount`
+      )
+      .get() as {
+      feedsCount: number;
+      readingSessionsCount: number;
+      starredTotalCount: number;
+      workTotalCount: number;
+    };
+
+    const violations: string[] = [];
+    if (row.feedsCount < 100) violations.push(`feedsCount (${row.feedsCount} < 100)`);
+    if (row.readingSessionsCount < 3000)
+      violations.push(`readingSessionsCount (${row.readingSessionsCount} < 3000)`);
+    if (row.starredTotalCount < 150)
+      violations.push(`starredTotalCount (${row.starredTotalCount} < 150)`);
+    if (row.workTotalCount < 5) violations.push(`workTotalCount (${row.workTotalCount} < 5)`);
+
+    return {
+      healthy: violations.length === 0,
+      feedsCount: row.feedsCount,
+      readingSessionsCount: row.readingSessionsCount,
+      starredTotalCount: row.starredTotalCount,
+      workTotalCount: row.workTotalCount,
+      violations,
+    };
+  } catch (err: any) {
+    return {
+      healthy: false,
+      feedsCount: 0,
+      readingSessionsCount: 0,
+      starredTotalCount: 0,
+      workTotalCount: 0,
+      violations: [err.message],
+    };
+  }
+}
+
 /**
  * Perform a live, zero-lock SQLite atomic snapshot using VACUUM INTO.
  * Guarantees a fully defragmented, non-WAL verified backup file.
@@ -38,6 +95,7 @@ export async function createDatabaseBackup(): Promise<{
   filepath: string;
   sizeBytes: number;
   durationMs: number;
+  prunedCount?: number;
   error?: string;
 }> {
   const startTime = Date.now();
@@ -58,8 +116,21 @@ export async function createDatabaseBackup(): Promise<{
       `[BackupService] ✓ Created atomic backup: ${filename} (${formatBytes(stat.size)}, ${durationMs}ms)`
     );
 
-    // Prune old backups, preserving last 7 snapshots
-    pruneOldBackups(7);
+    // Anti-poisoning guard: only prune older backups if current data invariants pass
+    // and the new backup is at least 50% of the largest existing backup size.
+    const invariants = verifyDataInvariants(sqlite);
+    const existingBackups = listBackups();
+    const maxExistingSize = existingBackups.reduce((max, b) => Math.max(max, b.sizeBytes), 0);
+    const sizeHealthy = maxExistingSize === 0 || stat.size >= maxExistingSize * 0.5;
+
+    let prunedCount = 0;
+    if (invariants.healthy && sizeHealthy) {
+      prunedCount = pruneOldBackups(7);
+    } else {
+      console.warn(
+        `[BackupService] ⚠️ Skipping backup pruning to protect historical snapshots (invariantsHealthy=${invariants.healthy}, sizeHealthy=${sizeHealthy}, violations=${invariants.violations.join(", ")})`
+      );
+    }
 
     return {
       success: true,
@@ -67,6 +138,7 @@ export async function createDatabaseBackup(): Promise<{
       filepath: targetPath,
       sizeBytes: stat.size,
       durationMs,
+      prunedCount,
     };
   } catch (error: any) {
     console.error("[BackupService] ✗ Backup failed:", error);
@@ -115,13 +187,23 @@ export function listBackups(): BackupInfo[] {
 }
 
 /**
- * Prune old backups, retaining the most recent `keepCount` snapshots.
+ * Prune old backups, retaining the most recent `keepCount` snapshots
+ * plus preserving at least one historical anchor snapshot (>24h old) if present.
  */
 export function pruneOldBackups(keepCount = 7): number {
   const backups = listBackups();
   if (backups.length <= keepCount) return 0;
 
-  const toDelete = backups.slice(keepCount);
+  const nowMs = Date.now();
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+  // Find the newest backup that is at least 24 hours old to serve as a daily anchor
+  const anchorBackup = backups.find(
+    (b) => nowMs - new Date(b.createdAt).getTime() >= twentyFourHoursMs
+  );
+
+  const toDelete = backups
+    .slice(keepCount)
+    .filter((b) => !anchorBackup || b.filename !== anchorBackup.filename);
   let deletedCount = 0;
 
   for (const b of toDelete) {

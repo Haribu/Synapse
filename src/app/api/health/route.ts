@@ -3,6 +3,7 @@ import { sqlite } from "@/lib/db";
 import { APP_VERSION } from "@/lib/version";
 import { reconcileFeedbackWithObsidian } from "@/app/api/feedback/route";
 import { rehydrateAndCleanTargetedSources } from "@/lib/services/sync-engine";
+import { createDatabaseBackup, verifyDataInvariants } from "@/lib/services/backup-service";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET() {
       );
     }
 
-    // Automatically reconcile Obsidian Feedback-Log.md with SQLite and trigger one-time in-place hygiene sweep per version
+    // Automatically reconcile Obsidian Feedback-Log.md with SQLite, create release snapshot, and trigger one-time in-place hygiene sweep per version
     if (startupHygieneTriggeredForVersion !== APP_VERSION) {
       startupHygieneTriggeredForVersion = APP_VERSION;
       try {
@@ -31,6 +32,9 @@ export async function GET() {
           .prepare("SELECT value FROM settings WHERE key = 'last_hygiene_version'")
           .get() as { value: string } | undefined;
         if (!lastVerRow || lastVerRow.value !== APP_VERSION) {
+          // Take an automatic atomic snapshot whenever a new version boots
+          createDatabaseBackup().catch(() => {});
+
           rehydrateAndCleanTargetedSources({ refetch: false, limit: 3000, sinceHours: 0 })
             .then(() => {
               sqlite
@@ -57,14 +61,20 @@ export async function GET() {
       openFeedbackCount: number;
     };
 
-    return NextResponse.json({
-      status: "ok",
-      version: APP_VERSION,
-      uptime: Math.round(process.uptime()),
-      db: "healthy",
-      hygiene,
-      timestamp: new Date().toISOString(),
-    });
+    const invariants = verifyDataInvariants(sqlite);
+
+    return NextResponse.json(
+      {
+        status: invariants.healthy ? "ok" : "degraded",
+        version: APP_VERSION,
+        uptime: Math.round(process.uptime()),
+        db: invariants.healthy ? "healthy" : "invariants_violated",
+        hygiene,
+        invariants,
+        timestamp: new Date().toISOString(),
+      },
+      { status: invariants.healthy ? 200 : 503 }
+    );
   } catch (error: any) {
     return NextResponse.json({ status: "error", error: error.message }, { status: 500 });
   }

@@ -4,7 +4,25 @@
  * Usage: bun scripts/verify-deploy.ts
  */
 
+import fs from "fs";
+
 const BASE_URL = process.env.SYNAPSE_URL || "http://127.0.0.1:3005";
+
+function resolveAllowedEmail(): string {
+  if (process.env.ALLOWED_EMAILS) {
+    return process.env.ALLOWED_EMAILS.split(",")[0]?.trim() || "";
+  }
+  try {
+    if (fs.existsSync("docker-compose.override.yml")) {
+      const content = fs.readFileSync("docker-compose.override.yml", "utf8");
+      const match = content.match(/ALLOWED_EMAILS=([^\s\n]+)/);
+      if (match?.[1]) {
+        return match[1].split(",")[0]?.trim() || "";
+      }
+    }
+  } catch {}
+  return "";
+}
 
 interface CheckResult {
   name: string;
@@ -18,8 +36,13 @@ interface CheckResult {
 async function runCheck(name: string, path: string): Promise<CheckResult> {
   const url = `${BASE_URL}${path}`;
   const start = Date.now();
+  const allowedEmail = resolveAllowedEmail();
+  const headers: Record<string, string> = { "User-Agent": "Synapse-Deploy-Verifier/1.0" };
+  if (allowedEmail) {
+    headers["CF-Access-Authenticated-User-Email"] = allowedEmail;
+  }
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "Synapse-Deploy-Verifier/1.0" } });
+    const res = await fetch(url, { headers });
     const durationMs = Date.now() - start;
     let details: any = null;
     const contentType = res.headers.get("content-type") || "";
@@ -66,6 +89,18 @@ async function main() {
         );
         if (h.referrerLeaks > 0 || h.cssSnippetLeaks > 0) {
           console.error(`   ❌ Content hygiene regression detected in database!`);
+          allPassed = false;
+        }
+      }
+      if (c.details.invariants) {
+        const inv = c.details.invariants;
+        console.log(
+          `   └─ Invariants: feeds=${inv.feedsCount}, sessions=${inv.readingSessionsCount}, starred=${inv.starredTotalCount}, work=${inv.workTotalCount}`
+        );
+        if (!inv.healthy) {
+          console.error(
+            `   ❌ User-data floor violation detected: ${(inv.violations || []).join(", ")}`
+          );
           allPassed = false;
         }
       }

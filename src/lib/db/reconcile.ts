@@ -273,3 +273,64 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
 
   return result;
 }
+
+export interface DatabaseInvariantsReport {
+  healthy: boolean;
+  feedsCount: number;
+  readingSessionsCount: number;
+  starredTotalCount: number;
+  workTotalCount: number;
+  violations: string[];
+}
+
+export function checkDatabaseInvariants(
+  sqlite: SqliteLike,
+  thresholds = { feeds: 100, readingSessions: 3000, starred: 150, work: 5 }
+): DatabaseInvariantsReport {
+  try {
+    const row = sqlite
+      .prepare(
+        `SELECT
+          (SELECT count(*) FROM feeds) AS feedsCount,
+          (SELECT count(*) FROM reading_sessions) AS readingSessionsCount,
+          ((SELECT count(*) FROM feed_items WHERE is_starred = 1) + (SELECT count(*) FROM reading_list WHERE is_starred = 1)) AS starredTotalCount,
+          ((SELECT count(*) FROM feed_items WHERE is_work = 1) + (SELECT count(*) FROM reading_list WHERE is_work = 1)) AS workTotalCount`
+      )
+      .get() as {
+      feedsCount: number;
+      readingSessionsCount: number;
+      starredTotalCount: number;
+      workTotalCount: number;
+    };
+
+    const violations: string[] = [];
+    if (row.feedsCount < thresholds.feeds)
+      violations.push(`feedsCount (${row.feedsCount} < ${thresholds.feeds})`);
+    if (row.readingSessionsCount < thresholds.readingSessions)
+      violations.push(
+        `readingSessionsCount (${row.readingSessionsCount} < ${thresholds.readingSessions})`
+      );
+    if (row.starredTotalCount < thresholds.starred)
+      violations.push(`starredTotalCount (${row.starredTotalCount} < ${thresholds.starred})`);
+    if (row.workTotalCount < thresholds.work)
+      violations.push(`workTotalCount (${row.workTotalCount} < ${thresholds.work})`);
+
+    return {
+      healthy: violations.length === 0,
+      feedsCount: row.feedsCount,
+      readingSessionsCount: row.readingSessionsCount,
+      starredTotalCount: row.starredTotalCount,
+      workTotalCount: row.workTotalCount,
+      violations,
+    };
+  } catch (err: any) {
+    return {
+      healthy: false,
+      feedsCount: 0,
+      readingSessionsCount: 0,
+      starredTotalCount: 0,
+      workTotalCount: 0,
+      violations: [err.message],
+    };
+  }
+}
