@@ -767,7 +767,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       )
       .run();
 
-    // Heal corrupted reading_list items where a saved hyperlink erroneously inherited its parent feed item's title/content
+    // Heal corrupted reading_list items where a saved hyperlink erroneously inherited its parent feed item's title/content or generic anchor text
     const corruptedReadingItems = sqlite
       .prepare(
         `SELECT rl.id, rl.url, rl.title, rl.source_context
@@ -775,6 +775,8 @@ export async function rehydrateAndCleanTargetedSources(options?: {
          WHERE (
            rl.title LIKE '%DEW #%'
            OR rl.title LIKE '%assorted links%'
+           OR rl.title LIKE 'Read More%'
+           OR lower(trim(rl.title)) IN ('read more', 'continue reading', 'link', 'here', 'article', 'click here')
            OR (rl.full_content_html LIKE '%Detection Engineering Weekly%' AND rl.url NOT LIKE '%detectionengineering.net%')
            OR EXISTS (
              SELECT 1 FROM feed_items fi
@@ -826,6 +828,40 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         )
         .run(resolvedTitle, resolvedSourceContext, resolvedHtml, resolvedMd, cItem.id);
     }
+
+    // Heal feed_items that were marked is_full_fetched = 1 but contain Next.js 404 stubs or empty markdown
+    try {
+      const brokenFeedItems = sqlite
+        .prepare(
+          `SELECT id, url, title FROM feed_items 
+           WHERE full_content_html LIKE '%NEXT_HTTP_ERROR_FALLBACK%'
+              OR (is_full_fetched = 1 AND media_type = 'article' AND (full_content_markdown IS NULL OR length(trim(full_content_markdown)) < 50))`
+        )
+        .all() as Array<{ id: string; url: string; title: string }>;
+
+      for (const bItem of brokenFeedItems) {
+        sqlite
+          .prepare(
+            `UPDATE feed_items 
+             SET is_full_fetched = 0, full_content_html = NULL, full_content_markdown = NULL 
+             WHERE id = ?`
+          )
+          .run(bItem.id);
+
+        try {
+          const extracted = await extractReadableContent(bItem.url);
+          if (extracted && extracted.contentMarkdown && extracted.contentMarkdown.length >= 100) {
+            sqlite
+              .prepare(
+                `UPDATE feed_items 
+                 SET is_full_fetched = 1, full_content_html = ?, full_content_markdown = ? 
+                 WHERE id = ?`
+              )
+              .run(extracted.contentHtml, extracted.contentMarkdown, bItem.id);
+          }
+        } catch {}
+      }
+    } catch {}
   } catch {
     // ignore
   }

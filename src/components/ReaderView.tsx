@@ -616,12 +616,16 @@ export function ReaderView({
     isWork = false
   ) => {
     try {
+      const isGeneric =
+        /^(?:read\s+more|continue\s+reading|link|here|source|click\s+here|article)[\s\W]*$/i.test(
+          contextText.trim()
+        );
       await fetch("/api/reading-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
-          title: contextText,
+          title: isGeneric ? "" : contextText,
           sourceFeedItemId: item.id,
           sourceContext: item.title,
           isWork,

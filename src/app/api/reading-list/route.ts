@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { readingList, feedItems } from "@/lib/db/schema";
 import { cleanUrl } from "@/lib/services/link-cleaner";
 import { extractReadableContent } from "@/lib/services/readability-extractor";
+import { isGenericTitle } from "@/lib/utils/clean-article";
 import { desc, eq } from "drizzle-orm";
 import crypto from "crypto";
 
@@ -41,6 +42,20 @@ export async function GET() {
           }
         } catch {}
       }
+
+      // Self-healing: if any items have generic placeholder titles like "Read More", heal them
+      if (isGenericTitle(item.title)) {
+        try {
+          const extracted = await extractReadableContent(cleanUrl(item.url));
+          if (extracted && extracted.title && !isGenericTitle(extracted.title)) {
+            db.update(readingList)
+              .set({ title: extracted.title })
+              .where(eq(readingList.id, item.id))
+              .run();
+            item.title = extracted.title;
+          }
+        } catch {}
+      }
     }
 
     return NextResponse.json({ items });
@@ -75,10 +90,11 @@ export async function POST(req: Request) {
         updates.isWork = Boolean(isWork);
       }
 
-      // Check if existing record is contaminated with parent newsletter title or content
+      // Check if existing record is contaminated with parent newsletter title or generic anchor text
       const isCorrupted =
         existing.title.includes("DEW #") ||
         existing.title.includes("assorted links") ||
+        isGenericTitle(existing.title) ||
         (existing.fullContentHtml &&
           existing.fullContentHtml.includes("Detection Engineering Weekly") &&
           !cleanedUrl.includes("detectionengineering.net")) ||
@@ -87,7 +103,7 @@ export async function POST(req: Request) {
           cleanUrl(existing.url) !== cleanedUrl);
 
       if (isCorrupted || !existing.fullContentHtml || existing.fullContentHtml.length < 50) {
-        let updateTitle = title || existing.sourceContext || cleanedUrl;
+        let updateTitle = (!isGenericTitle(title) && title) || existing.sourceContext || cleanedUrl;
         let updateContext = sourceContext || (existing.title.includes("DEW #") ? existing.title : null);
         let updateHtml = "";
         let updateMd = "";
@@ -135,7 +151,7 @@ export async function POST(req: Request) {
     const id = crypto.randomUUID();
     const now = new Date();
 
-    let finalTitle = title || sourceContext || cleanedUrl;
+    let finalTitle = (!isGenericTitle(title) && title) || sourceContext || cleanedUrl;
     let contentHtml = fullContentHtml || "";
     let contentMarkdown = fullContentMarkdown || "";
 
@@ -145,20 +161,22 @@ export async function POST(req: Request) {
       if (parent && cleanUrl(parent.url) === cleanedUrl) {
         if (parent.fullContentHtml) contentHtml = parent.fullContentHtml;
         if (parent.fullContentMarkdown) contentMarkdown = parent.fullContentMarkdown;
-        if (!title && parent.title) finalTitle = parent.title;
+        if ((!title || isGenericTitle(title)) && parent.title) finalTitle = parent.title;
       }
     }
 
-    // 2. If still empty, attempt extraction from the cleaned URL
-    if (!contentHtml || contentHtml.length < 50) {
+    // 2. If still empty or title is generic, attempt extraction from the cleaned URL
+    if (!contentHtml || contentHtml.length < 50 || isGenericTitle(finalTitle)) {
       try {
         const extracted = await extractReadableContent(cleanedUrl);
         if (extracted) {
-          if (!title || title.trim().length === 0) {
+          if (!title || isGenericTitle(title) || isGenericTitle(finalTitle)) {
             finalTitle = extracted.title || sourceContext || cleanedUrl;
           }
-          contentHtml = extracted.contentHtml;
-          contentMarkdown = extracted.contentMarkdown;
+          if (!contentHtml || contentHtml.length < 50) {
+            contentHtml = extracted.contentHtml;
+            contentMarkdown = extracted.contentMarkdown;
+          }
         }
       } catch {
         // Fallback if network fails, we still keep the link in reading list

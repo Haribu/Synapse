@@ -191,6 +191,30 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)\s*REG AD\s*(?:\n|$)/gi, "\n\n");
 
+  // 4e-1. Strip The Register author byline with profile links, comments counts, timestamps, and Google preference promo
+  md = md.replace(
+    /(?:^|\n)\s*(?:[A-Za-z\s\.-]+)?\[[A-Za-z\s\.-]+\]\(https?:\/\/[^\)]*theregister\.com\/author\/[^\)]*\)[^\n]*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*\[?\d+\]?\((?:https?:\/\/forums\.theregister\.com\/[^\)]*|\/forums\/[^\)]*)\)\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*Published\s+[A-Za-z]+ \d{1,2} [A-Za-z]+ \d{4} \/\/\s*\d{1,2}:\d{2}\s*UTC\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*\[Make us preferred on Google\]\(https?:\/\/google\.com\/preferences\/source\?q=theregister\.com\)\s*(?:\n|$)/gi,
+    "\n"
+  );
+
+  // 4e-2. Strip The Register leading "READ MORE" related story section
+  md = md.replace(
+    /(?:^|\n)#{1,6}\s*READ MORE\s*\n+(?:\*\s+#{1,6}\s+\[[^\n]+\]\([^\)]+\)\s*\n*)+/gi,
+    "\n"
+  );
+
   // 4e-2. Strip BleepingComputer Jina reader navigation, breadcrumbs, tags, and footer comments
   if (md.includes("BleepingComputer") || md.includes("bleepingcomputer.com")) {
     md = md.replace(
@@ -700,7 +724,27 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)(?:#{1,6}\s*)?Most Read\s*\n+(?:\s*\d+\.\s+|\s*\*\s+)\[!\[[\s\S]*$/gi, "");
 
+  // 15p. Strip The Register tail tags, forum links, Google promos, and trailing story carousels
+  md = md.replace(
+    /(?:^|\n)(?:\*\s+)?\[[a-z0-9\s-]+\]\(https?:\/\/[^\)]*theregister\.com\/tag\/[^\)]*\)[\s\S]*$/gi,
+    ""
+  );
+
   return md.trim();
+}
+
+/**
+ * Detects generic placeholder titles or link anchor text (e.g. "Read More", "Continue reading", "Link")
+ * so that full article extraction can replace them with genuine article titles.
+ */
+export function isGenericTitle(t?: string | null): boolean {
+  if (!t || t.trim().length === 0) return true;
+  const clean = t.trim().toLowerCase().replace(/[^\w\s]/g, "");
+  return (
+    /^(?:read\s+more|continue\s+reading|link|here|source|article|full\s+article|website|view\s+more|read\s+full\s+article|click\s+here)$/i.test(
+      clean
+    ) || /^read\s+more\b/i.test(clean)
+  );
 }
 
 /**
@@ -943,6 +987,25 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(/<p>\s*REG AD\s*<\/p>/gi, "");
+  // Strip The Register author byline with profile links, comments counts, timestamps, and Google preference promo
+  html = html.replace(
+    /<p>\s*(?:[A-Za-z\s\.-]*<a[^>]*href=["'][^"']*theregister\.com\/author\/[^"']*["'][^>]*>[^<]*<\/a>[^<]*)\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*<a[^>]*href=["'][^"']*forums\.theregister\.com\/[^"']*["'][^>]*>\d+<\/a>\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*Published\s+[A-Za-z]+ \d{1,2} [A-Za-z]+ \d{4} \/\/\s*\d{1,2}:\d{2}\s*UTC\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*<a[^>]*href=["'][^"']*google\.com\/preferences\/source\?q=theregister\.com["'][^>]*>Make us preferred on Google<\/a>\s*<\/p>/gi,
+    ""
+  );
+  // Strip The Register leading "READ MORE" related story list
+  html = html.replace(/<h3>READ MORE<\/h3>\s*<ul>[\s\S]*?<\/ul>/gi, "");
 
   // 9c-3. Strip Dark Reading / Cyber portal bracketed or unbracketed author/read-time cards
   html = html.replace(
@@ -1172,6 +1235,12 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(/<h[1-6][^>]*>\s*Most Read\s*<\/h[1-6]>\s*<ol[\s\S]*?<\/ol>/gi, "");
+
+  // Strip The Register tail tags, forum links, Google promos, and trailing story carousels in HTML
+  html = html.replace(
+    /<p>\s*(?:<a[^>]*href=["'][^"']*theregister\.com\/tag\/[^"']*["'][^>]*>[^<]*<\/a>\s*)+(?:<a[^>]*href=["'][^"']*forums\.theregister\.com\/[^"']*["'][^>]*>\d+<\/a>\s*)?<\/p>[\s\S]*$/gi,
+    ""
+  );
 
   // 9i-7. Strip ByteByteGo leading sponsored cards and Foreign Affairs top dates
   html = html.replace(

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.3.13] - 2026-11-06
+
+### Fixed
+- **The Register Front Matter & Tail Cleanup (Feedback 03/11/2026):**
+  - Stripped author bylines with redundant markdown links, forum comment counters, publication timestamps (`Published Day DD Mon YYYY // HH:MM UTC`), Google preference promos, and leading `### READ MORE` related story lists across `cleanArticleMarkdown` and `cleanArticleHtml` in `clean-article.ts`.
+  - Stripped trailing tag lists, comment links, and related story card embeds.
+- **Extraction Hardening Against Next.js 404 Stubs (Feedback 03/11/2026):**
+  - Hardened `readability-extractor.ts` to reject Next.js 404 templates (`NEXT_HTTP_ERROR_FALLBACK`) and empty markdown (< 50 chars) from masquerading as successful extractions, preventing false `is_full_fetched = 1` status.
+  - Added automatic reset and live re-extraction in `rehydrateAndCleanTargetedSources()` within `sync-engine.ts` to heal previously poisoned 404 stubs.
+  - Added fallback recovery card in `ReaderView.tsx` with direct browser launch and re-extraction trigger when content is pending.
+- **Reading List & Work Backlog Generic Title Healing (Feedback 05/11/2026):**
+  - Added `isGenericTitle()` filter in `src/app/api/reading-list/route.ts` and `ReaderView.tsx` so anchor text like "Read More", "Continue reading", and "Link" is never saved as the definitive article title.
+  - Prioritized `extracted.title` for generic links and added automatic title healing in `rehydrateAndCleanTargetedSources()`.
+
 ## [1.3.12] - 2026-11-01
 
 ### Fixed

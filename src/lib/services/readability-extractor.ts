@@ -1282,6 +1282,18 @@ export async function extractReadableContent(targetUrl: string): Promise<Extract
     }
   } catch {}
 
+  // Guard: If cleaned markdown is empty (< 50 chars) or contains HTTP error stubs (e.g. Next.js 404 template),
+  // reject this extraction as invalid so it doesn't get cached as a fully fetched article
+  if (
+    !contentMarkdown ||
+    contentMarkdown.trim().length < 50 ||
+    contentHtml.includes("NEXT_HTTP_ERROR_FALLBACK") ||
+    contentHtml.includes('data-dgst="NEXT_HTTP_ERROR_FALLBACK') ||
+    /<template[^>]+NEXT_HTTP_ERROR_FALLBACK/i.test(contentHtml)
+  ) {
+    return null;
+  }
+
   return {
     title: article.title || dom.window.document.title || "Untitled",
     byline: article.byline || undefined,

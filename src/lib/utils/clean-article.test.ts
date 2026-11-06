@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { cleanArticleHtml, cleanArticleMarkdown } from "./clean-article";
+import { cleanArticleHtml, cleanArticleMarkdown, isGenericTitle } from "./clean-article";
 import { extractSnippet } from "../services/feed-fetcher";
 
 describe("cleanArticleHtml - Hyperlink & Monolithic Text Preservation", () => {
@@ -365,5 +365,73 @@ Despite battlefield setbacks, the Kremlin believes its endurance will outlast We
     expect(cleanedHtml).not.toContain("Share");
     expect(cleanedHtml).not.toContain("Volume 104");
     expect(cleanedHtml).toContain("Despite battlefield setbacks, the Kremlin believes its endurance will outlast Western resolve.");
+  });
+
+  it("strips The Register front matter (byline, forum comments, timestamp, Google promo, READ MORE list) and tail tags (Bug 03/11/2026)", () => {
+    const rawMd = `'Weight-Space Programming' fiddles with nerd knobs to boost benchmark scores
+
+Thomas Claburn[Thomas Claburn](https://www.theregister.com/author/thomas-claburn)AI AND SOFTWARE REPORTER
+
+[0](https://forums.theregister.com/forum/all/2026/11/03/20263/)
+
+Published Tue 03 Nov 2026 // 08:15 UTC
+
+[Make us preferred on Google](https://google.com/preferences/source?q=theregister.com)
+
+### READ MORE
+
+*   #### [AI could break legal systems by finding previously hidden loopholes 14 hours ago](https://www.theregister.com/ai-and-ml/2026/11/02/ai-could-break-legal-systems-by-finding-previously-hidden-loopholes/5307066)
+*   #### [Thieves pilfer environment variables from Trigger AI workflow tool 18 hours ago](https://www.theregister.com/security/2026/11/02/thieves-pilfer-environment-variables-from-trigger-ai-workflow-tool/5306998)
+
+The outputs of AI models are the result of a complex interplay between neurons, weights, training, and inference.
+
+[mit](https://www.theregister.com/tag/mit)[ai](https://www.theregister.com/tag/ai)[0](https://forums.theregister.com/forum/all/2026/11/03/20263/)
+`;
+
+    const rawHtml = `<p>&#39;Weight-Space Programming&#39; fiddles with nerd knobs to boost benchmark scores</p>
+<p>Thomas Claburn<a href="https://www.theregister.com/author/thomas-claburn">Thomas Claburn</a>AI AND SOFTWARE REPORTER</p>
+<p><a href="https://forums.theregister.com/forum/all/2026/11/03/20263/">0</a></p>
+<p>Published Tue 03 Nov 2026 // 08:15 UTC</p>
+<p><a href="https://google.com/preferences/source?q=theregister.com">Make us preferred on Google</a></p>
+<h3>READ MORE</h3>
+<ul>
+<li><h4><a href="https://www.theregister.com/ai-and-ml/2026/11/02/ai-could-break-legal-systems-by-finding-previously-hidden-loopholes/5307066">AI could break legal systems</a></h4></li>
+</ul>
+<p>The outputs of AI models are the result of a complex interplay between neurons, weights, training, and inference.</p>
+<p><a href="https://www.theregister.com/tag/mit">mit</a><a href="https://www.theregister.com/tag/ai">ai</a><a href="https://forums.theregister.com/forum/all/2026/11/03/20263/">0</a></p>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Forget retraining - AI can now tweak another AI's weights");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Forget retraining - AI can now tweak another AI's weights");
+
+    expect(cleanedMd).not.toContain("Thomas Claburn");
+    expect(cleanedMd).not.toContain("AI AND SOFTWARE REPORTER");
+    expect(cleanedMd).not.toContain("forums.theregister.com");
+    expect(cleanedMd).not.toContain("Published Tue 03 Nov 2026");
+    expect(cleanedMd).not.toContain("Make us preferred on Google");
+    expect(cleanedMd).not.toContain("READ MORE");
+    expect(cleanedMd).not.toContain("theregister.com/tag/");
+    expect(cleanedMd).toContain("The outputs of AI models are the result of a complex interplay between neurons, weights, training, and inference.");
+
+    expect(cleanedHtml).not.toContain("Thomas Claburn");
+    expect(cleanedHtml).not.toContain("forums.theregister.com");
+    expect(cleanedHtml).not.toContain("Published Tue 03 Nov 2026");
+    expect(cleanedHtml).not.toContain("Make us preferred on Google");
+    expect(cleanedHtml).not.toContain("READ MORE");
+    expect(cleanedHtml).not.toContain("theregister.com/tag/");
+    expect(cleanedHtml).toContain("The outputs of AI models are the result of a complex interplay between neurons, weights, training, and inference.");
+  });
+
+  it("identifies generic link text like 'Read More' or 'Continue reading' (Bug 05/11/2026)", () => {
+    expect(isGenericTitle("Read More")).toBe(true);
+    expect(isGenericTitle("read more")).toBe(true);
+    expect(isGenericTitle("Read more ->")).toBe(true);
+    expect(isGenericTitle("Continue reading")).toBe(true);
+    expect(isGenericTitle("link")).toBe(true);
+    expect(isGenericTitle("Click here")).toBe(true);
+    expect(isGenericTitle("")).toBe(true);
+    expect(isGenericTitle(null)).toBe(true);
+
+    expect(isGenericTitle("Weight-Space Programming fiddles with nerd knobs")).toBe(false);
+    expect(isGenericTitle("What’s happened to the global rules-based order?")).toBe(false);
   });
 });
