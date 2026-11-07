@@ -1,7 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
-import { WELCOME_FEED, WELCOME_ARTICLE } from "@/lib/data/welcome-guide";
 import { reconcileUserData } from "./reconcile";
 import path from "path";
 import fs from "fs";
@@ -327,59 +326,17 @@ try {
 }
 
 // Initialize welcome guide if not present
+// Clean up synthetic welcome feed & internal welcome article so phantom "General" category is removed
 try {
-  const welcomeItem = sqlite
-    .prepare("SELECT count(*) as count FROM feed_items WHERE id = ?")
-    .get(WELCOME_ARTICLE.id) as { count: number };
-
-  if (welcomeItem && welcomeItem.count === 0) {
-    sqlite
-      .prepare(
-        `INSERT OR IGNORE INTO feeds (id, title, feed_url, site_url, category, feed_type, editorial_type, auto_full_fetch, created_at)
-         VALUES (?, ?, ?, ?, ?, 'rss', ?, 1, CAST(strftime('%s', 'now') AS INTEGER))`
-      )
-      .run(
-        WELCOME_FEED.id,
-        WELCOME_FEED.title,
-        WELCOME_FEED.feedUrl,
-        WELCOME_FEED.siteUrl,
-        WELCOME_FEED.category,
-        WELCOME_FEED.editorialType
-      );
-
-    sqlite
-      .prepare(
-        `INSERT INTO feed_items (id, feed_id, guid, title, url, author, snippet, full_content_html, full_content_markdown, is_full_fetched, media_type, published_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'article', CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER))`
-      )
-      .run(
-        WELCOME_ARTICLE.id,
-        WELCOME_ARTICLE.feedId,
-        WELCOME_ARTICLE.guid,
-        WELCOME_ARTICLE.title,
-        WELCOME_ARTICLE.url,
-        WELCOME_ARTICLE.author,
-        WELCOME_ARTICLE.snippet,
-        WELCOME_ARTICLE.fullContentHtml,
-        WELCOME_ARTICLE.fullContentMarkdown
-      );
-  } else {
-    // Keep welcome guide content synchronized with current template updates
-    sqlite
-      .prepare(
-        `UPDATE feed_items 
-         SET full_content_html = ?, full_content_markdown = ?, snippet = ?
-         WHERE id = ?`
-      )
-      .run(
-        WELCOME_ARTICLE.fullContentHtml,
-        WELCOME_ARTICLE.fullContentMarkdown,
-        WELCOME_ARTICLE.snippet,
-        WELCOME_ARTICLE.id
-      );
-  }
+  sqlite.exec(`
+    DELETE FROM reading_list WHERE item_id = 'welcome-guide';
+    DELETE FROM reading_sessions WHERE target_id = 'welcome-guide' OR feed_id = 'synapse-welcome';
+    DELETE FROM board_items WHERE target_id = 'welcome-guide';
+    DELETE FROM feed_items WHERE id = 'welcome-guide' OR feed_id = 'synapse-welcome';
+    DELETE FROM feeds WHERE id = 'synapse-welcome' OR feed_url LIKE '%synapse.local%';
+  `);
 } catch (e) {
-  console.warn("Welcome guide initialization skipped:", e);
+  console.warn("Welcome guide cleanup skipped:", e);
 }
 
 // Safe startup data migrations (executed only if feeds exist)

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.2] - 2026-11-07
+
+### Fixed
+- **Stats & Analytics Light Mode Editorial Sanctuary Compatibility (`src/components/StatsView.tsx`):**
+  - Resolved missing light mode styling across StatsView by introducing dual-theme Tailwind classes across all modules.
+  - Adapted active reading dwell metrics cards, queue clearance progress modules, 7-day velocity bar charts, topic distribution bars, and Stats for Nerds SQLite storage/telemetry tables to render with high contrast and legible typography across both warm paper (`bg-slate-50/50`, `bg-white`, `border-slate-200`, `text-slate-900`) and obsidian ink (`dark:bg-slate-900`, `dark:bg-slate-950`, `dark:border-slate-800`, `dark:text-white`).
+- **Phantom "General" Category & Internal Welcome Guide Purge (`src/lib/db/index.ts`, `src/lib/services/sync-engine.ts`):**
+  - Removed auto-seeding of synthetic `synapse-welcome` feed and `welcome-guide` internal article from `db/index.ts`, which previously forced a phantom "General" category containing 1 internal article.
+  - Added automated cleanup migration in `db/index.ts` and `sync-engine.ts` (`rehydrateAndCleanTargetedSources`) to purge historical `synapse-welcome` and `welcome-guide` records from existing databases.
+  - Restored natural first-run `OnboardingModal` triggering when 0 feeds exist in the user's database.
+
 ## [1.4.1] - 2026-11-07
 
 ### Added

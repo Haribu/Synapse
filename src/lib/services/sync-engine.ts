@@ -739,13 +739,15 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     "%cyentia%",
   ];
 
-  // Heal synthetic welcome feed and known legacy feed URLs during maintenance sweep
+  // Purge synthetic welcome feed and phantom General category during maintenance sweep
   try {
-    sqlite
-      .prepare(
-        `UPDATE feeds SET error_count = 0, last_error = NULL WHERE id = 'synapse-welcome' OR feed_url LIKE '%synapse.local%'`
-      )
-      .run();
+    sqlite.exec(`
+      DELETE FROM reading_list WHERE item_id = 'welcome-guide';
+      DELETE FROM reading_sessions WHERE target_id = 'welcome-guide' OR feed_id = 'synapse-welcome';
+      DELETE FROM board_items WHERE target_id = 'welcome-guide';
+      DELETE FROM feed_items WHERE id = 'welcome-guide' OR feed_id = 'synapse-welcome';
+      DELETE FROM feeds WHERE id = 'synapse-welcome' OR feed_url LIKE '%synapse.local%';
+    `);
     sqlite
       .prepare(
         `UPDATE feeds SET feed_url = 'https://marginalrevolution.com/feed', error_count = 0, last_error = NULL WHERE feed_url = 'http://www.marginalrevolution.com/marginalrevolution/index.rdf'`
