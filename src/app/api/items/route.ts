@@ -221,7 +221,7 @@ export async function GET(req: Request) {
         .map((rl) => ({
           id: rl.id,
           feedId: null,
-          feedTitle: rl.sourceContext ? `Research: ${rl.sourceContext}` : "Read Later",
+          feedTitle: rl.sourceContext ? `Imported: ${rl.sourceContext}` : "Read Later",
           feedCategory: "Read Later",
           feedEditorialType: "independent" as const,
           title: rl.title,
@@ -242,7 +242,9 @@ export async function GET(req: Request) {
         }));
 
       if (rlStarred.length > 0) {
-        const combined = [...items, ...rlStarred].sort((a, b) => {
+        const seenUrls = new Set(items.map((it) => it.url));
+        const uniqueRlStarred = rlStarred.filter((rl) => !seenUrls.has(rl.url));
+        const combined = [...items, ...uniqueRlStarred].sort((a, b) => {
           const timeA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
           const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
           return timeB - timeA;

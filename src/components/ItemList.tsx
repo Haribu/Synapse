@@ -33,12 +33,25 @@ import {
   Bell,
   X,
   Filter,
+  Sparkles,
+  BookOpen,
+  Clock,
+  Hourglass,
+  ArrowRight,
 } from "lucide-react";
 import { decodeHtmlEntities } from "@/lib/utils/decode";
 import { isSponsoredContent } from "@/lib/utils/sponsored";
 import { isWeeklyRoundup } from "@/lib/utils/roundup";
 import { AccessibilitySettings } from "@/lib/utils/accessibility";
 import { clusterRelatedArticles } from "@/lib/utils/clustering";
+import {
+  BacklogCandidate,
+  getItemAgeDays,
+  isItemStale,
+  selectTriageZeroPivotItem,
+  selectDailyVaultSpotlight,
+  getStaleBacklogItems,
+} from "@/lib/utils/backlog-nudges";
 
 interface Item {
   id: string;
@@ -47,6 +60,7 @@ interface Item {
   author?: string;
   snippet?: string;
   publishedAt?: string;
+  createdAt?: string;
   feedTitle?: string;
   feedEditorialType?: string;
   mediaType?: "article" | "video" | "podcast";
@@ -56,6 +70,7 @@ interface Item {
   isWork?: boolean;
   workDispatchedAt?: string | null;
   isFullFetched?: boolean;
+  sourceQueue?: "read_later" | "research_inbox" | "watch_later";
 }
 
 interface ItemListProps {
@@ -84,6 +99,10 @@ interface ItemListProps {
   onToggleRead?: (id: string, isRead: boolean) => void;
   onToggleStar?: (id: string, isStarred: boolean) => void;
   workDigestName?: string;
+  backlogCandidates?: BacklogCandidate[];
+  onSelectBacklogCandidate?: (candidate: BacklogCandidate) => void;
+  onDropBacklogCandidate?: (candidate: BacklogCandidate) => void;
+  onDeclareBankruptcy?: (staleItems: Item[]) => void;
 }
 
 function EditorialBadge({ type }: { type?: string }) {
@@ -179,6 +198,10 @@ export function ItemList({
   onToggleRead,
   onToggleStar,
   workDigestName,
+  backlogCandidates = [],
+  onSelectBacklogCandidate,
+  onDropBacklogCandidate,
+  onDeclareBankruptcy,
 }: ItemListProps) {
   const [compactMode, setCompactMode] = useState<boolean>(false);
   const [hideRead, setHideRead] = useState<boolean>(false);
@@ -186,6 +209,30 @@ export function ItemList({
   const [hideRoundups, setHideRoundups] = useState<boolean>(false);
   const [showFilteredDetails, setShowFilteredDetails] = useState<boolean>(false);
   const [expandedClusters, setExpandedClusters] = useState<Record<string, boolean>>({});
+  const [dismissedSpotlightIds, setDismissedSpotlightIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    try {
+      const raw = localStorage.getItem(`synapse_spotlight_dismissed_${todayKey}`);
+      if (raw) {
+        setDismissedSpotlightIds(JSON.parse(raw));
+      } else {
+        setDismissedSpotlightIds([]);
+      }
+    } catch {
+      setDismissedSpotlightIds([]);
+    }
+  }, []);
+
+  const handleDismissSpotlight = (id: string) => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const next = Array.from(new Set([...dismissedSpotlightIds, id]));
+    setDismissedSpotlightIds(next);
+    try {
+      localStorage.setItem(`synapse_spotlight_dismissed_${todayKey}`, JSON.stringify(next));
+    } catch {}
+  };
 
   // Swipe-to-triage row state
   const [swipingRow, setSwipingRow] = useState<{ id: string; offsetX: number } | null>(null);
@@ -293,6 +340,8 @@ export function ItemList({
     itemIds: string[];
   } | null>(null);
   const [workTab, setWorkTab] = useState<"pending" | "dispatched" | "all">("pending");
+  const [queueFilter, setQueueFilter] = useState<"all" | "research" | "starred">("all");
+  const [showAddUrlForm, setShowAddUrlForm] = useState<boolean>(false);
   const [newResearchUrl, setNewResearchUrl] = useState("");
   const [addingResearchUrl, setAddingResearchUrl] = useState(false);
   const [mondayReminderDismissed, setMondayReminderDismissed] = useState(false);
@@ -436,11 +485,11 @@ export function ItemList({
   };
 
   const isWorkView = selectedView === "work" || title === "Work Items";
-  const isSavedView =
+  const isReadingQueueGroup =
+    selectedView === "reading_queue" ||
     selectedView === "starred" ||
-    selectedView === "watch_later" ||
-    selectedView === "reading_list" ||
-    isWorkView;
+    selectedView === "reading_list";
+  const isSavedView = isReadingQueueGroup || selectedView === "watch_later" || isWorkView;
 
   const effectiveHideSponsored = a11ySettings?.hideSponsored ?? hideSponsored;
   const effectiveHideRoundups = a11ySettings?.hideRoundups ?? hideRoundups;
@@ -448,6 +497,8 @@ export function ItemList({
 
   const pendingWorkCount = items.filter((i) => !i.workDispatchedAt).length;
   const dispatchedWorkCount = items.filter((i) => Boolean(i.workDispatchedAt)).length;
+  const researchInItemsCount = items.filter((i) => i.sourceQueue === "research_inbox").length;
+  const starredInItemsCount = items.filter((i) => i.sourceQueue !== "research_inbox").length;
   const isMonday = new Date().getDay() === 1;
   const showMondayReminder = isMonday && pendingWorkCount > 0 && !mondayReminderDismissed;
 
@@ -457,6 +508,9 @@ export function ItemList({
 
   useEffect(() => {
     sessionReadIdsRef.current.clear();
+    if (selectedView === "reading_list") setQueueFilter("research");
+    else if (selectedView === "starred") setQueueFilter("starred");
+    else setQueueFilter("all");
   }, [selectedView, title]);
 
   useEffect(() => {
@@ -486,7 +540,16 @@ export function ItemList({
           return Boolean(item.workDispatchedAt) || item.id === selectedItemId;
         return true;
       }
-      // Saved queues (Read Later, Watch Later, Research Inbox) always show items regardless of read state
+      if (selectedView === "reading_queue") {
+        if (queueFilter === "research") {
+          return item.sourceQueue === "research_inbox" || item.id === selectedItemId;
+        }
+        if (queueFilter === "starred") {
+          return item.sourceQueue !== "research_inbox" || item.id === selectedItemId;
+        }
+        return true;
+      }
+      // Saved queues (Reading Queue, Starred, Watch Later, Deep Research) always show items regardless of read state
       if (isSavedView) return true;
       if (!hideRead) return true;
       return !item.isRead || item.id === selectedItemId || sessionReadIdsRef.current.has(item.id);
@@ -498,6 +561,8 @@ export function ItemList({
     effectiveHideVendors,
     isWorkView,
     workTab,
+    selectedView,
+    queueFilter,
     isSavedView,
     hideRead,
     selectedItemId,
@@ -524,6 +589,31 @@ export function ItemList({
   const sponsoredCount = items.filter((item) => isSponsoredContent(item)).length;
   const roundupCount = items.filter((item) => isWeeklyRoundup(item)).length;
   const vendorCount = items.filter((item) => item.feedEditorialType === "vendor").length;
+
+  const staleThresholdDays = a11ySettings?.staleDaysThreshold ?? 14;
+  const isDecayQueueView =
+    selectedView === "reading_queue" ||
+    selectedView === "starred" ||
+    selectedView === "watch_later" ||
+    selectedView === "reading_list";
+  const staleItemsInView = React.useMemo(
+    () => (isDecayQueueView ? getStaleBacklogItems(displayedItems, staleThresholdDays) : []),
+    [isDecayQueueView, displayedItems, staleThresholdDays]
+  );
+
+  const triageZeroPivotItem = React.useMemo(
+    () => selectTriageZeroPivotItem(backlogCandidates),
+    [backlogCandidates]
+  );
+
+  const dailyVaultSpotlight = React.useMemo(() => {
+    if (selectedView !== "unread") return null;
+    if (a11ySettings?.enableTriageSpotlight === false) return null;
+    return selectDailyVaultSpotlight(backlogCandidates, {
+      minAgeDays: 3,
+      dismissedItemIds: dismissedSpotlightIds,
+    });
+  }, [selectedView, a11ySettings?.enableTriageSpotlight, backlogCandidates, dismissedSpotlightIds]);
 
   return (
     <div
@@ -561,7 +651,13 @@ export function ItemList({
             {title || "Articles"}
           </h2>
           <p className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap truncate">
-            {unreadCount} unread · {displayedItems.length} shown
+            {isReadingQueueGroup
+              ? `${displayedItems.length} saved${
+                  selectedView === "reading_queue" && queueFilter === "all"
+                    ? ` (${researchInItemsCount} research · ${starredInItemsCount} starred)`
+                    : ""
+                }`
+              : `${unreadCount} unread · ${displayedItems.length} shown`}
             {hiddenReadCount > 0 && hideRead ? ` (${hiddenReadCount} hidden)` : ""}
             {sponsoredCount > 0 && effectiveHideSponsored
               ? ` (${sponsoredCount} sponsored hidden)`
@@ -773,27 +869,140 @@ export function ItemList({
           )}
         </div>
       )}
-      {title === "Research Inbox" && (
-        <form
-          onSubmit={handleAddUrlToResearch}
-          className="px-3 py-2 border-b border-purple-100 dark:border-purple-950/60 bg-purple-50/50 dark:bg-purple-950/20 flex gap-2 items-center"
-        >
-          <input
-            type="url"
-            value={newResearchUrl}
-            onChange={(e) => setNewResearchUrl(e.target.value)}
-            placeholder="Paste URL to add to Research Inbox..."
-            className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-lg text-xs placeholder-purple-300 dark:placeholder-purple-600 focus:outline-none focus:border-purple-500"
-          />
+      {isReadingQueueGroup && (
+        <div className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 px-2.5 py-1.5 space-y-1.5">
+          {/* Compact Segmented Switcher + "+ URL" Toggle */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1 flex items-center gap-0.5 bg-slate-200/70 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-0.5 rounded-lg text-[10px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setQueueFilter("all");
+                  if (selectedView !== "reading_queue" && onSelectView) {
+                    onSelectView("reading_queue");
+                  }
+                }}
+                className={`flex-1 py-1 px-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1 ${
+                  selectedView === "reading_queue" && queueFilter === "all"
+                    ? "bg-amber-500 text-white font-semibold shadow-2xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>
+                  All ({selectedView === "reading_queue" ? items.length : backlogCandidates.length})
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQueueFilter("research");
+                  if (selectedView !== "reading_list" && onSelectView) {
+                    onSelectView("reading_list");
+                  }
+                }}
+                className={`flex-1 py-1 px-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1 ${
+                  selectedView === "reading_list" ||
+                  (selectedView === "reading_queue" && queueFilter === "research")
+                    ? "bg-purple-600 text-white font-semibold shadow-2xs"
+                    : "text-purple-700 dark:text-purple-300 hover:bg-purple-500/10"
+                }`}
+              >
+                <Bookmark className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">
+                  Research (
+                  {selectedView === "reading_list"
+                    ? items.length
+                    : selectedView === "reading_queue"
+                      ? researchInItemsCount
+                      : backlogCandidates.filter((c) => c.sourceQueue === "research_inbox").length}
+                  )
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQueueFilter("starred");
+                  if (selectedView !== "starred" && onSelectView) {
+                    onSelectView("starred");
+                  }
+                }}
+                className={`flex-1 py-1 px-1.5 rounded-md text-center transition-all flex items-center justify-center gap-1 ${
+                  selectedView === "starred" ||
+                  (selectedView === "reading_queue" && queueFilter === "starred")
+                    ? "bg-amber-500 text-white font-semibold shadow-2xs"
+                    : "text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                }`}
+              >
+                <Star className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">
+                  Starred (
+                  {selectedView === "starred"
+                    ? items.length
+                    : selectedView === "reading_queue"
+                      ? starredInItemsCount
+                      : backlogCandidates.filter((c) => c.sourceQueue !== "research_inbox").length}
+                  )
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAddUrlForm((prev) => !prev)}
+              className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all flex items-center gap-1 shrink-0 ${
+                showAddUrlForm
+                  ? "bg-purple-600 text-white border-purple-600"
+                  : "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20"
+              }`}
+              title="Add a web URL directly to Deep Research"
+            >
+              <Plus className="w-3 h-3" />
+              <span>URL</span>
+            </button>
+          </div>
+
+          {showAddUrlForm && (
+            <form onSubmit={handleAddUrlToResearch} className="flex gap-1.5 items-center pt-0.5">
+              <input
+                type="url"
+                value={newResearchUrl}
+                onChange={(e) => setNewResearchUrl(e.target.value)}
+                placeholder="https://... (save link to Deep Research)"
+                autoFocus
+                className="flex-1 px-2.5 py-1 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-800 rounded-lg text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-purple-500"
+              />
+              <button
+                type="submit"
+                disabled={addingResearchUrl || !newResearchUrl.trim()}
+                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 transition-all"
+              >
+                {addingResearchUrl ? "..." : "Save"}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* 14-Day Half-Life Decay & Bankruptcy Sweep Banner */}
+      {isDecayQueueView && staleItemsInView.length > 0 && onDeclareBankruptcy && (
+        <div className="px-3 py-2 border-b border-amber-200/80 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/35 flex items-center justify-between gap-2 text-xs animate-in fade-in">
+          <div className="flex items-center gap-2 min-w-0 text-amber-900 dark:text-amber-200">
+            <Hourglass className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="truncate text-[11px]">
+              <strong>{staleItemsInView.length} stale</strong> item
+              {staleItemsInView.length === 1 ? "" : "s"} (&ge;{staleThresholdDays}d old)
+            </span>
+          </div>
           <button
-            type="submit"
-            disabled={addingResearchUrl || !newResearchUrl.trim()}
-            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1"
+            type="button"
+            onClick={() => onDeclareBankruptcy(staleItemsInView)}
+            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shadow-xs active:scale-95 transition-all shrink-0 flex items-center gap-1"
+            title={`Clear all ${staleItemsInView.length} items older than ${staleThresholdDays} days (with 5-second undo)`}
           >
-            <Plus className="w-3 h-3" />
-            <span>{addingResearchUrl ? "Adding..." : "Add"}</span>
+            <Trash2 className="w-3 h-3" />
+            <span>Declare Bankruptcy ({staleItemsInView.length})</span>
           </button>
-        </form>
+        </div>
       )}
 
       {/* Items Scroll List */}
@@ -894,17 +1103,17 @@ export function ItemList({
                 </div>
               </div>
             )
-          ) : title === "Research Inbox" ? (
+          ) : title === "Research Inbox" || title === "Deep Research" ? (
             <div className="p-8 text-left max-w-sm mx-auto space-y-4 animate-in fade-in">
               <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center">
                 <Bookmark className="w-5 h-5" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Research Inbox is Empty
+                  Deep Research is Empty
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Your Research Inbox is a dedicated workspace for articles, newsletters, and notes
+                  Deep Research is your dedicated workspace for articles, newsletters, and notes
                   you intend to study deeply.
                 </p>
               </div>
@@ -924,24 +1133,81 @@ export function ItemList({
               </div>
             </div>
           ) : (
-            <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs space-y-3">
-              <p>
-                {items.length > 0
-                  ? "All caught up! No unread articles."
-                  : "No articles found in this view."}
-              </p>
-              {hiddenReadCount > 0 && hideRead && (
-                <button
-                  onClick={toggleHideRead}
-                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium block mx-auto pt-1"
-                >
-                  Show {hiddenReadCount} read {hiddenReadCount === 1 ? "article" : "articles"}
-                </button>
+            <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs space-y-4">
+              <div className="space-y-1.5">
+                <p className="font-medium text-slate-600 dark:text-slate-300">
+                  {items.length > 0
+                    ? "All caught up! Triage is at zero."
+                    : "No unread articles in this view."}
+                </p>
+                {hiddenReadCount > 0 && hideRead && (
+                  <button
+                    onClick={toggleHideRead}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium block mx-auto"
+                  >
+                    Show {hiddenReadCount} read {hiddenReadCount === 1 ? "article" : "articles"}
+                  </button>
+                )}
+              </div>
+
+              {/* 1. Triage Zero Deep Read Pivot Card */}
+              {triageZeroPivotItem && onSelectBacklogCandidate && (
+                <div className="text-left p-4 rounded-2xl bg-gradient-to-br from-amber-50/90 via-white to-purple-50/80 dark:from-slate-900 dark:via-slate-900/95 dark:to-purple-950/30 border border-amber-300/70 dark:border-amber-700/50 shadow-md space-y-3 animate-in fade-in">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        triageZeroPivotItem.sourceQueue === "research_inbox"
+                          ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      {triageZeroPivotItem.sourceQueue === "research_inbox"
+                        ? "Research Vault Pivot"
+                        : "Read Later Pivot"}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-500" />
+                      Saved {triageZeroPivotItem.ageDays}d ago · ~{triageZeroPivotItem.readingMinutes}m
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      You cleared the noise. Got {triageZeroPivotItem.readingMinutes} minutes for this piece you intentionally saved?
+                    </p>
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2">
+                      {decodeHtmlEntities(triageZeroPivotItem.title)}
+                    </h3>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => onSelectBacklogCandidate(triageZeroPivotItem)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Read Deeply Now</span>
+                    </button>
+                    {onDropBacklogCandidate && (
+                      <button
+                        type="button"
+                        onClick={() => onDropBacklogCandidate(triageZeroPivotItem)}
+                        className="py-2 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all active:scale-95"
+                        title="No longer relevant — drop from backlog"
+                      >
+                        Drop
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
+
               {onSelectView && (
                 <button
                   onClick={() => onSelectView("all")}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all block mx-auto"
+                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold transition-all block mx-auto"
                 >
                   View All Articles
                 </button>
@@ -949,12 +1215,86 @@ export function ItemList({
             </div>
           )
         ) : (
-          clusteredItems.map((cluster) => {
+          <>
+            {/* 2. Interleaved Serendipity: Daily Vault Spotlight pinned at top of Triage */}
+            {dailyVaultSpotlight && onSelectBacklogCandidate && (
+              <div className="p-3.5 bg-gradient-to-r from-amber-50/80 via-amber-50/40 to-purple-50/60 dark:from-amber-950/30 dark:via-slate-900/80 dark:to-purple-950/30 border-b border-amber-200/80 dark:border-amber-800/50 animate-in fade-in">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                      dailyVaultSpotlight.sourceQueue === "research_inbox"
+                        ? "bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/30"
+                        : "bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30"
+                    }`}
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    From Your Vault · Saved {dailyVaultSpotlight.ageDays}d ago
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                      ~{dailyVaultSpotlight.readingMinutes}m read
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissSpotlight(dailyVaultSpotlight.id)}
+                      className="p-0.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      title="Hide spotlight for today"
+                      aria-label="Dismiss daily vault spotlight"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onSelectBacklogCandidate(dailyVaultSpotlight)}
+                  className="w-full text-left group"
+                >
+                  <h3 className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 leading-snug line-clamp-2 transition-colors">
+                    {decodeHtmlEntities(dailyVaultSpotlight.title)}
+                  </h3>
+                </button>
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                    {dailyVaultSpotlight.feedTitle ||
+                      (dailyVaultSpotlight.sourceQueue === "research_inbox"
+                        ? "Research Inbox"
+                        : "Read Later")}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onSelectBacklogCandidate(dailyVaultSpotlight)}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                    >
+                      <span>Read Now</span>
+                      <ArrowRight className="w-2.5 h-2.5" />
+                    </button>
+                    {onDropBacklogCandidate && (
+                      <button
+                        type="button"
+                        onClick={() => onDropBacklogCandidate(dailyVaultSpotlight)}
+                        className="px-2 py-1 rounded-lg bg-white/80 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 border border-slate-200 dark:border-slate-700 text-[10px] font-semibold transition-all"
+                        title="Drop from saved backlog"
+                      >
+                        Drop
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {clusteredItems.map((cluster) => {
             const item = cluster.primary;
             const isSelected = selectedItemId === item.id;
             const hasRelated = cluster.relatedStories.length > 0;
             const isExpanded = !!expandedClusters[item.id];
             const rowSwipeOffset = swipingRow?.id === item.id ? swipingRow.offsetX : 0;
+            const itemAgeDays = isDecayQueueView ? getItemAgeDays(item) : 0;
+            const itemIsStale = isDecayQueueView && isItemStale(item, staleThresholdDays);
 
             return (
               <div
@@ -1001,9 +1341,11 @@ export function ItemList({
                       className={`w-full text-left px-3.5 py-2.5 transition-colors relative flex items-center gap-2.5 ${
                         isSelected
                           ? "bg-blue-50/80 dark:bg-slate-800/90 text-slate-900 dark:text-white"
-                          : item.isRead
-                            ? "opacity-60 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
-                            : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200"
+                          : itemIsStale
+                            ? "opacity-55 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
+                            : item.isRead
+                              ? "opacity-60 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
+                              : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200"
                       }`}
                     >
                       {/* Active Indicator Bar */}
@@ -1019,6 +1361,15 @@ export function ItemList({
                           <EditorialBadge type={item.feedEditorialType} />
                           {isSponsoredContent(item) && <SponsoredBadge />}
                           {isWeeklyRoundup(item) && <RoundupBadge />}
+                          {itemIsStale && (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-[9px] bg-amber-500/15 text-amber-700 dark:text-amber-400 px-1 py-0.2 rounded border border-amber-500/30 font-mono shrink-0"
+                              title={`Saved ${itemAgeDays} days ago — past ${staleThresholdDays}d half-life`}
+                            >
+                              <Hourglass className="w-2.5 h-2.5" />
+                              Stale · {itemAgeDays}d
+                            </span>
+                          )}
                           {item.mediaType === "video" && (
                             <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 px-1 py-0.2 rounded border border-red-200 dark:border-red-800/50">
                               <Video className="w-2.5 h-2.5" />
@@ -1043,10 +1394,16 @@ export function ItemList({
                               : ""}
                           </span>
                           <div className="flex items-center gap-1 shrink-0 ml-1">
-                            {item.isStarred && (
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                            )}
-                            {!item.isRead && (
+                            {item.sourceQueue === "research_inbox" ? (
+                              <span title="Saved in Deep Research">
+                                <Bookmark className="w-3 h-3 fill-purple-500 text-purple-500" />
+                              </span>
+                            ) : item.isStarred ? (
+                              <span title="Starred Article">
+                                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                              </span>
+                            ) : null}
+                            {!item.isRead && !isSavedView && (
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             )}
                           </div>
@@ -1063,9 +1420,11 @@ export function ItemList({
                       className={`w-full text-left p-4 transition-colors relative flex gap-3 ${
                         isSelected
                           ? "bg-blue-50/70 dark:bg-slate-800/90 text-slate-900 dark:text-white"
-                          : item.isRead
-                            ? "opacity-60 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
-                            : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200"
+                          : itemIsStale
+                            ? "opacity-55 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
+                            : item.isRead
+                              ? "opacity-60 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-500 dark:text-slate-400"
+                              : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-800 dark:text-slate-200"
                       }`}
                     >
                       {/* Active Indicator Bar */}
@@ -1082,6 +1441,15 @@ export function ItemList({
                           <EditorialBadge type={item.feedEditorialType} />
                           {isSponsoredContent(item) && <SponsoredBadge />}
                           {isWeeklyRoundup(item) && <RoundupBadge />}
+                          {itemIsStale && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-400 px-1.5 py-0.2 rounded border border-amber-500/30 font-mono shrink-0"
+                              title={`Saved ${itemAgeDays} days ago — past ${staleThresholdDays}d half-life`}
+                            >
+                              <Hourglass className="w-2.5 h-2.5" />
+                              Stale · {itemAgeDays}d
+                            </span>
+                          )}
                           {item.mediaType === "video" && (
                             <span className="inline-flex items-center gap-1 text-[10px] bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 px-1.5 py-0.2 rounded border border-red-200 dark:border-red-800/50">
                               <Video className="w-2.5 h-2.5" />
@@ -1137,10 +1505,16 @@ export function ItemList({
                             )}
                           </div>
                           <div className="flex items-center gap-1">
-                            {item.isStarred && (
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                            )}
-                            {!item.isRead && (
+                            {item.sourceQueue === "research_inbox" ? (
+                              <span title="Saved in Deep Research">
+                                <Bookmark className="w-3 h-3 fill-purple-500 text-purple-500" />
+                              </span>
+                            ) : item.isStarred ? (
+                              <span title="Starred Article">
+                                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                              </span>
+                            ) : null}
+                            {!item.isRead && !isSavedView && (
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             )}
                           </div>
@@ -1219,7 +1593,8 @@ export function ItemList({
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
 
         {!loading &&

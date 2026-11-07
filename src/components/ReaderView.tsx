@@ -67,6 +67,15 @@ export interface ReaderViewProps {
   onToggleFocusReader?: () => void;
   isFocusReader?: boolean;
   workDigestName?: string;
+  onSaveToResearch?: (payload: {
+    url: string;
+    title: string;
+    sourceFeedItemId?: string;
+    sourceContext?: string;
+    fullContentHtml?: string;
+    fullContentMarkdown?: string;
+    isWork?: boolean;
+  }) => Promise<boolean>;
 }
 
 export function ReaderView({
@@ -87,6 +96,7 @@ export function ReaderView({
   onToggleFocusReader,
   isFocusReader,
   workDigestName,
+  onSaveToResearch,
 }: ReaderViewProps) {
   const [hydrating, setHydrating] = useState(false);
   const [syncingObsidian, setSyncingObsidian] = useState(false);
@@ -438,6 +448,22 @@ export function ReaderView({
     if (!item) return;
     setSavingToResearch(true);
     try {
+      if (onSaveToResearch) {
+        const ok = await onSaveToResearch({
+          url: item.url,
+          title: item.title,
+          sourceFeedItemId: item.id,
+          sourceContext: item.feedTitle,
+          fullContentHtml: item.fullContentHtml || currentFullHtml || undefined,
+          fullContentMarkdown: item.fullContentMarkdown || undefined,
+        });
+        if (ok) {
+          setResearchSuccess(true);
+          setTimeout(() => setResearchSuccess(false), 3000);
+        }
+        return;
+      }
+
       const res = await fetch("/api/reading-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -620,6 +646,22 @@ export function ReaderView({
         /^(?:read\s+more|continue\s+reading|link|here|source|click\s+here|article)[\s\W]*$/i.test(
           contextText.trim()
         );
+      if (!isWork && onSaveToResearch) {
+        const ok = await onSaveToResearch({
+          url,
+          title: isGeneric ? "" : contextText,
+          sourceFeedItemId: item.id,
+          sourceContext: item.title,
+          isWork: false,
+        });
+        setLinkMenu(null);
+        if (ok) {
+          setLinkSavedToast("Saved link to Research Inbox");
+          setTimeout(() => setLinkSavedToast(null), 3000);
+        }
+        return;
+      }
+
       await fetch("/api/reading-list", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

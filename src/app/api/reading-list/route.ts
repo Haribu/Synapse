@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const items = db.select().from(readingList).orderBy(desc(readingList.createdAt)).all();
+    const allItems = db.select().from(readingList).orderBy(desc(readingList.createdAt)).all();
+    // Exclude legacy Feedly/Read-Later archive imports (is_starred = true) so Research Inbox only contains genuine Research items
+    const items = allItems.filter((item) => !item.isStarred);
 
     // Self-healing: if any items in readingList have empty content (<50 chars) but point to a sourceFeedItemId, backfill immediately
     // ONLY IF the item URL matches the parent item URL (saving parent article directly, not an external hyperlink)

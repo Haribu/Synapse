@@ -10,6 +10,10 @@ export interface AccessibilitySettings {
   hideRoundups: boolean;
   hideVendors: boolean;
   disableGrouping: boolean;
+  readLaterCap: number;
+  researchCap: number;
+  staleDaysThreshold: number;
+  enableTriageSpotlight: boolean;
 }
 
 export const DEFAULT_A11Y_SETTINGS: AccessibilitySettings = {
@@ -24,6 +28,10 @@ export const DEFAULT_A11Y_SETTINGS: AccessibilitySettings = {
   hideRoundups: false,
   hideVendors: false,
   disableGrouping: false,
+  readLaterCap: 15,
+  researchCap: 10,
+  staleDaysThreshold: 14,
+  enableTriageSpotlight: true,
 };
 
 const STORAGE_KEY = "synapse_accessibility_settings";

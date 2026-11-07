@@ -48,7 +48,8 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
       sqlite.prepare("UPDATE feeds SET title = 'Risk and Cyber' WHERE title = 'Risk and Cyber '").run();
     }
 
-    // 1. Reading List: All items imported as read-later or feedly-import should have is_starred = 1
+    // 1. Reading List: Items explicitly imported as read-later or feedly-import should have is_starred = 1
+    // (Active Research Inbox saves from newsletters or direct URL additions keep is_starred = 0 so the queues never double-count)
     const rlStarRes = sqlite
       .prepare(
         `UPDATE reading_list
@@ -57,12 +58,20 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
            AND (
              tags LIKE '%read-later%'
              OR tags LIKE '%feedly-import%'
-             OR tags IS NULL
-             OR tags = ''
            )`
       )
       .run();
     result.readingListStarred = rlStarRes.changes;
+
+    // 1b. Un-star reading_list items that are actually Research Inbox saves (not feedly/read-later imports)
+    sqlite
+      .prepare(
+        `UPDATE reading_list
+         SET is_starred = 0
+         WHERE is_starred = 1
+           AND (tags IS NULL OR (tags NOT LIKE '%read-later%' AND tags NOT LIKE '%feedly-import%'))`
+      )
+      .run();
 
     // 2. Reading List: Reconcile Work items (flagged research items, AI bubble, DEW #172 links)
     const rlWorkRes = sqlite

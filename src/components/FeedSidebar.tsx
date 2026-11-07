@@ -48,6 +48,7 @@ interface Board {
 type SidebarView =
   | "all"
   | "unread"
+  | "reading_queue"
   | "starred"
   | "watch_later"
   | "work"
@@ -61,6 +62,11 @@ interface FeedSidebarProps {
   feeds: Feed[];
   boards: Board[];
   totalUnread?: number;
+  readLaterCount?: number;
+  readLaterCap?: number;
+  watchLaterCount?: number;
+  researchCount?: number;
+  researchCap?: number;
   selectedCategory: string | null;
   selectedFeedId: string | null;
   selectedView: SidebarView;
@@ -78,6 +84,11 @@ export function FeedSidebar({
   feeds,
   boards,
   totalUnread = 0,
+  readLaterCount = 0,
+  readLaterCap = 15,
+  watchLaterCount = 0,
+  researchCount = 0,
+  researchCap = 10,
   selectedCategory,
   selectedFeedId,
   selectedView,
@@ -94,6 +105,7 @@ export function FeedSidebar({
   const [syncingAll, setSyncingAll] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [expandedReadCategories, setExpandedReadCategories] = useState<Record<string, boolean>>({});
+  const [readingQueueExpanded, setReadingQueueExpanded] = useState<boolean>(true);
   const [hideReadFeeds, setHideReadFeeds] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
 
@@ -332,22 +344,135 @@ export function FeedSidebar({
             </div>
           </button>
 
-          <button
-            onClick={() => {
-              onSelectView("starred");
-              if (onCloseMobile) onCloseMobile();
-            }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              selectedView === "starred"
-                ? "bg-amber-500 text-white shadow-sm"
-                : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-900"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <Clock className="w-4 h-4 text-amber-500" />
-              <span>Read Later (Articles)</span>
+          {/* Unified Reading Queue with Expandable Sub-Queues (Excluding Videos) */}
+          <div className="space-y-0.5">
+            <div
+              className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                selectedView === "reading_queue"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : selectedView === "starred" || selectedView === "reading_list"
+                    ? "bg-amber-500/10 dark:bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/20"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-900"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReadingQueueExpanded((prev) => !prev);
+                }}
+                className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                title={
+                  readingQueueExpanded
+                    ? "Collapse Reading Queue sections"
+                    : "Expand Starred & Deep Research sections"
+                }
+                aria-label="Toggle Reading Queue sections"
+              >
+                {readingQueueExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectView("reading_queue");
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                className="flex-1 flex items-center justify-between pl-1.5 pr-1 py-0.5 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Star
+                    className={`w-4 h-4 ${
+                      selectedView === "reading_queue" ? "text-white fill-white" : "text-amber-500"
+                    }`}
+                  />
+                  <span>Reading Queue</span>
+                </div>
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                    selectedView === "reading_queue"
+                      ? "bg-white/20 text-white font-bold"
+                      : readLaterCount + researchCount >= readLaterCap + researchCap
+                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/30"
+                        : readLaterCount + researchCount > 0
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold"
+                          : "opacity-50"
+                  }`}
+                  title={`Total Reading Queue: ${readLaterCount + researchCount} (${readLaterCount} Starred + ${researchCount} Deep Research, Cap ${readLaterCap + researchCap})`}
+                >
+                  {readLaterCount + researchCount}/{readLaterCap + researchCap}
+                </span>
+              </button>
             </div>
-          </button>
+
+            {readingQueueExpanded && (
+              <div className="pl-5 pr-1 py-0.5 space-y-0.5 border-l-2 border-slate-200 dark:border-slate-800 ml-3.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectView("reading_list");
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                    selectedView === "reading_list"
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "text-purple-700 dark:text-purple-300 hover:bg-purple-100/70 dark:hover:bg-purple-950/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Bookmark className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Deep Research</span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                      selectedView === "reading_list"
+                        ? "bg-white/20 text-white font-bold"
+                        : researchCount >= researchCap
+                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold"
+                          : "opacity-80"
+                    }`}
+                    title={`Deep Research WIP capacity: ${researchCount} of ${researchCap} (sorted by date saved)`}
+                  >
+                    {researchCount}/{researchCap}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectView("starred");
+                    if (onCloseMobile) onCloseMobile();
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors ${
+                    selectedView === "starred"
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "text-amber-700 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-950/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Starred Articles</span>
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                      selectedView === "starred"
+                        ? "bg-white/20 text-white font-bold"
+                        : readLaterCount >= readLaterCap
+                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold"
+                          : "opacity-80"
+                    }`}
+                    title={`Starred Articles WIP capacity: ${readLaterCount} of ${readLaterCap} (sorted by published date)`}
+                  >
+                    {readLaterCount}/{readLaterCap}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => {
@@ -361,9 +486,22 @@ export function FeedSidebar({
             }`}
           >
             <div className="flex items-center gap-2.5">
-              <PlaySquare className="w-4 h-4 text-rose-500" />
+              <PlaySquare
+                className={`w-4 h-4 ${selectedView === "watch_later" ? "text-white" : "text-rose-500"}`}
+              />
               <span>Watch Later (Videos)</span>
             </div>
+            {watchLaterCount > 0 && (
+              <span
+                className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                  selectedView === "watch_later"
+                    ? "bg-white/20 text-white font-bold"
+                    : "bg-rose-500/15 text-rose-600 dark:text-rose-400 font-semibold"
+                }`}
+              >
+                {watchLaterCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -380,23 +518,6 @@ export function FeedSidebar({
             <div className="flex items-center gap-2.5">
               <Briefcase className="w-4 h-4" />
               <span>Work Items</span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => {
-              onSelectView("reading_list");
-              if (onCloseMobile) onCloseMobile();
-            }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              selectedView === "reading_list"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-950/40"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <Bookmark className="w-4 h-4" />
-              <span>Research Inbox</span>
             </div>
           </button>
 

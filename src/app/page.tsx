@@ -12,7 +12,13 @@ import { AccessibilityModal } from "@/components/AccessibilityModal";
 import { GuideModal } from "@/components/GuideModal";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { WipCapModal, WipCapPromptState } from "@/components/WipCapModal";
 import { UndoToast, UndoAction } from "@/components/UndoToast";
+import {
+  BacklogCandidate,
+  evaluateWipCapacity,
+  selectTriageZeroPivotItem,
+} from "@/lib/utils/backlog-nudges";
 import {
   AccessibilitySettings,
   DEFAULT_A11Y_SETTINGS,
@@ -33,6 +39,7 @@ import { clusterRelatedArticles } from "@/lib/utils/clustering";
 type View =
   | "all"
   | "unread"
+  | "reading_queue"
   | "starred"
   | "watch_later"
   | "work"
@@ -80,6 +87,61 @@ export default function HomePage() {
   const [isOffline, setIsOffline] = useState(false);
   const [displayedItems, setDisplayedItems] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [savedStarredItems, setSavedStarredItems] = useState<BacklogCandidate[]>([]);
+  const [savedWatchLaterCount, setSavedWatchLaterCount] = useState<number>(0);
+  const [savedResearchItems, setSavedResearchItems] = useState<BacklogCandidate[]>([]);
+  const [wipCapPrompt, setWipCapPrompt] = useState<WipCapPromptState | null>(null);
+
+  const formatResearchFeedTitle = (sourceContext?: string | null) => {
+    if (!sourceContext) return "Deep Research";
+    const trimmed = sourceContext.trim();
+    if (!trimmed || /^(read more|continue reading|link|article|source|here)$/i.test(trimmed)) {
+      return "Deep Research";
+    }
+    return `Newsletter: ${trimmed}`;
+  };
+
+  const refreshBacklogSummary = useCallback(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    try {
+      const [starredRes, watchRes, researchRes] = await Promise.all([
+        fetch("/api/items?starredOnly=true&textOnly=true&limit=500"),
+        fetch("/api/items?starredOnly=true&videoOnly=true&limit=500"),
+        fetch("/api/reading-list"),
+      ]);
+      const [starredData, watchData, researchData] = await Promise.all([
+        starredRes.json(),
+        watchRes.json(),
+        researchRes.json(),
+      ]);
+      const researchList: BacklogCandidate[] = Array.isArray(researchData.items)
+        ? researchData.items.map((it: any) => ({
+            ...it,
+            feedTitle: formatResearchFeedTitle(it.sourceContext),
+            publishedAt: it.createdAt,
+            sourceQueue: "research_inbox" as const,
+          }))
+        : [];
+      setSavedResearchItems(researchList);
+
+      const researchUrls = new Set(researchList.map((it) => it.url));
+      if (Array.isArray(starredData.items)) {
+        setSavedStarredItems(
+          starredData.items
+            .filter((it: any) => !researchUrls.has(it.url))
+            .map((it: any) => ({
+              ...it,
+              sourceQueue: "read_later" as const,
+            }))
+        );
+      }
+      if (Array.isArray(watchData.items)) {
+        setSavedWatchLaterCount(watchData.items.length);
+      }
+    } catch (e) {
+      console.warn("Failed to refresh backlog summary", e);
+    }
+  }, []);
 
   const refreshUserProfile = useCallback(async () => {
     try {
@@ -216,12 +278,43 @@ export default function HomePage() {
         return;
       }
 
+      if (selectedView === "reading_queue") {
+        const [rlRes, starRes] = await Promise.all([
+          fetch("/api/reading-list"),
+          fetch("/api/items?starredOnly=true&textOnly=true&limit=500"),
+        ]);
+        const [rlData, starData] = await Promise.all([rlRes.json(), starRes.json()]);
+        const loadedReadingList = (rlData.items || []).map((it: any) => ({
+          ...it,
+          feedTitle: formatResearchFeedTitle(it.sourceContext),
+          publishedAt: it.createdAt,
+          sourceQueue: "research_inbox" as const,
+        }));
+        const rlUrls = new Set(loadedReadingList.map((it: any) => it.url));
+        const loadedStarred = (starData.items || [])
+          .filter((it: any) => !rlUrls.has(it.url))
+          .map((it: any) => ({
+            ...it,
+            sourceQueue: "read_later" as const,
+          }));
+        const combined = [...loadedReadingList, ...loadedStarred].sort((a, b) => {
+          const timeA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+          const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+          return timeB - timeA;
+        });
+        setItems(combined);
+        saveArticlesToOfflineCache(combined);
+        return;
+      }
+
       if (selectedView === "reading_list") {
         const res = await fetch("/api/reading-list");
         const data = await res.json();
         const loadedReadingList = (data.items || []).map((it: any) => ({
           ...it,
-          feedTitle: it.sourceContext ? `Newsletter: ${it.sourceContext}` : "Curated Link",
+          feedTitle: formatResearchFeedTitle(it.sourceContext),
+          publishedAt: it.createdAt,
+          sourceQueue: "research_inbox" as const,
         }));
         setItems(loadedReadingList);
         saveArticlesToOfflineCache(loadedReadingList);
@@ -229,7 +322,9 @@ export default function HomePage() {
       }
 
       const params = new URLSearchParams();
-      params.set("limit", String(limit));
+      const effectiveLimit =
+        selectedView === "starred" || selectedView === "watch_later" ? 500 : limit;
+      params.set("limit", String(effectiveLimit));
       if (selectedView === "unread") params.set("unreadOnly", "true");
       if (selectedView === "starred") {
         params.set("starredOnly", "true");
@@ -262,7 +357,11 @@ export default function HomePage() {
           setItems([]);
         }
       } else {
-        const itemsResult = data.items || [];
+        const rawItems = data.items || [];
+        const itemsResult =
+          selectedView === "starred"
+            ? rawItems.map((it: any) => ({ ...it, sourceQueue: "read_later" as const }))
+            : rawItems;
         setItems(itemsResult);
         saveArticlesToOfflineCache(itemsResult);
       }
@@ -286,7 +385,8 @@ export default function HomePage() {
 
   useEffect(() => {
     refreshFeedsAndBoards();
-  }, [refreshFeedsAndBoards]);
+    refreshBacklogSummary();
+  }, [refreshFeedsAndBoards, refreshBacklogSummary]);
 
   useEffect(() => {
     refreshItems();
@@ -316,11 +416,12 @@ export default function HomePage() {
   const viewTitle = useMemo(() => {
     if (selectedFeedId) return feeds.find((f) => f.id === selectedFeedId)?.title || "Feed";
     if (selectedCategory) return selectedCategory;
-    if (selectedView === "starred") return "Read Later (Articles)";
+    if (selectedView === "reading_queue") return "Reading Queue";
+    if (selectedView === "starred") return "Starred Articles";
     if (selectedView === "watch_later") return "Watch Later (Videos)";
     if (selectedView === "work") return "Work Items";
     if (selectedView === "unread") return "Triage";
-    if (selectedView === "reading_list") return "Research Inbox";
+    if (selectedView === "reading_list") return "Deep Research";
     return "All Articles";
   }, [selectedView, selectedFeedId, selectedCategory, feeds]);
 
@@ -353,6 +454,7 @@ export default function HomePage() {
   }, [refreshFeedsAndBoards, refreshItems]);
 
   const isCuratedView =
+    selectedView === "reading_queue" ||
     selectedView === "starred" ||
     selectedView === "watch_later" ||
     selectedView === "reading_list" ||
@@ -417,7 +519,7 @@ export default function HomePage() {
     }
   };
 
-  const handleToggleStar = async (id: string, isStarred: boolean) => {
+  const commitToggleStar = async (id: string, isStarred: boolean) => {
     try {
       const targetItem = items.find((i) => i.id === id);
       const isFromReadingList =
@@ -433,9 +535,223 @@ export default function HomePage() {
         await patchItem(id, { isStarred });
       }
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, isStarred } : it)));
+      refreshBacklogSummary();
     } catch (err) {
       console.error("Failed to toggle star", err);
     }
+  };
+
+  const handleToggleStar = async (id: string, isStarred: boolean) => {
+    if (!isStarred) {
+      await commitToggleStar(id, false);
+      return;
+    }
+
+    const targetItem = items.find((i) => i.id === id);
+    const isVideo =
+      targetItem?.mediaType === "video" ||
+      Boolean(targetItem?.videoId) ||
+      Boolean(targetItem?.url && /youtube\.com|youtu\.be/i.test(targetItem.url));
+
+    const cap = a11ySettings.readLaterCap ?? 15;
+    const status = evaluateWipCapacity(savedStarredItems.length, cap);
+
+    if (!isVideo && status.isAtOrOverCap) {
+      const oldest = selectTriageZeroPivotItem(savedStarredItems);
+      setWipCapPrompt({
+        queueType: "read_later",
+        queueLabel: "Read Later",
+        currentCount: savedStarredItems.length,
+        cap,
+        oldestItem: oldest,
+        pendingTitle: targetItem?.title || "Selected Article",
+        onSwapOldestAndSave: async () => {
+          setWipCapPrompt(null);
+          if (oldest) {
+            await commitToggleStar(oldest.id, false);
+          }
+          await commitToggleStar(id, true);
+        },
+        onReadOldestNow: () => {
+          setWipCapPrompt(null);
+          if (oldest) {
+            selectView("starred");
+            setSelectedItemId(oldest.id);
+          }
+        },
+        onSaveAnyway: async () => {
+          setWipCapPrompt(null);
+          await commitToggleStar(id, true);
+        },
+      });
+      return;
+    }
+
+    await commitToggleStar(id, true);
+  };
+
+  const commitSaveToResearch = async (payload: {
+    url: string;
+    title: string;
+    sourceFeedItemId?: string;
+    sourceContext?: string;
+    fullContentHtml?: string;
+    fullContentMarkdown?: string;
+    isWork?: boolean;
+  }): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/reading-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshBacklogSummary();
+        if (selectedView === "reading_list") {
+          refreshItems();
+        }
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("Save to Research Inbox failed", err);
+      return false;
+    }
+  };
+
+  const handleSaveToResearchWithCap = async (payload: {
+    url: string;
+    title: string;
+    sourceFeedItemId?: string;
+    sourceContext?: string;
+    fullContentHtml?: string;
+    fullContentMarkdown?: string;
+    isWork?: boolean;
+  }): Promise<boolean> => {
+    const cap = a11ySettings.researchCap ?? 10;
+    const status = evaluateWipCapacity(savedResearchItems.length, cap);
+    const alreadyExists = savedResearchItems.some((r) => r.url === payload.url);
+
+    if (!alreadyExists && status.isAtOrOverCap) {
+      const oldest = selectTriageZeroPivotItem(savedResearchItems);
+      return new Promise<boolean>((resolve) => {
+        setWipCapPrompt({
+          queueType: "research_inbox",
+          queueLabel: "Research Inbox",
+          currentCount: savedResearchItems.length,
+          cap,
+          oldestItem: oldest,
+          pendingTitle: payload.title || payload.url,
+          onSwapOldestAndSave: async () => {
+            setWipCapPrompt(null);
+            if (oldest) {
+              await fetch(`/api/reading-list?id=${oldest.id}`, { method: "DELETE" });
+            }
+            const ok = await commitSaveToResearch(payload);
+            resolve(ok);
+          },
+          onReadOldestNow: () => {
+            setWipCapPrompt(null);
+            if (oldest) {
+              selectView("reading_list");
+              setSelectedItemId(oldest.id);
+            }
+            resolve(false);
+          },
+          onSaveAnyway: async () => {
+            setWipCapPrompt(null);
+            const ok = await commitSaveToResearch(payload);
+            resolve(ok);
+          },
+        });
+      });
+    }
+
+    return commitSaveToResearch(payload);
+  };
+
+  const handleSelectBacklogCandidate = (candidate: BacklogCandidate) => {
+    setSelectedView("reading_queue");
+    setSelectedFeedId(null);
+    setSelectedCategory(null);
+    setSelectedItemId(candidate.id);
+  };
+
+  const handleDropBacklogCandidate = async (candidate: BacklogCandidate) => {
+    if (candidate.sourceQueue === "research_inbox") {
+      setSavedResearchItems((prev) => prev.filter((it) => it.id !== candidate.id));
+      setUndoAction({
+        id: candidate.id,
+        message: `Dropped "${candidate.title.slice(0, 28)}..." from Research`,
+        onUndo: () => {
+          refreshBacklogSummary();
+        },
+        onCommit: async () => {
+          try {
+            await fetch(`/api/reading-list?id=${candidate.id}`, { method: "DELETE" });
+            refreshBacklogSummary();
+          } catch (err) {
+            console.error("Failed to drop research candidate", err);
+          }
+        },
+      });
+    } else {
+      setSavedStarredItems((prev) => prev.filter((it) => it.id !== candidate.id));
+      setUndoAction({
+        id: candidate.id,
+        message: `Unstarred "${candidate.title.slice(0, 28)}..."`,
+        onUndo: () => {
+          refreshBacklogSummary();
+        },
+        onCommit: async () => {
+          await commitToggleStar(candidate.id, false);
+        },
+      });
+    }
+  };
+
+  const handleDeclareBankruptcy = (staleItems: any[]) => {
+    if (!staleItems || staleItems.length === 0) return;
+    const staleIds = staleItems.map((it) => it.id);
+    const staleSet = new Set(staleIds);
+    const previousItems = [...items];
+
+    const researchIds = staleItems
+      .filter(
+        (it) =>
+          selectedView === "reading_list" ||
+          it.sourceQueue === "research_inbox" ||
+          (!it.feedId && !it.isStarred)
+      )
+      .map((it) => it.id);
+    const starredIds = staleItems
+      .filter((it) => !researchIds.includes(it.id))
+      .map((it) => it.id);
+
+    setItems((prev) => prev.filter((it) => !staleSet.has(it.id)));
+    if (selectedItemId && staleSet.has(selectedItemId)) {
+      setSelectedItemId(null);
+    }
+
+    setUndoAction({
+      id: `bankruptcy-queue-${Date.now()}`,
+      message: `Cleared ${staleIds.length} stale item${staleIds.length === 1 ? "" : "s"} from queue`,
+      onUndo: () => {
+        setItems(previousItems);
+      },
+      onCommit: async () => {
+        try {
+          await Promise.all([
+            ...researchIds.map((id) => fetch(`/api/reading-list?id=${id}`, { method: "DELETE" })),
+            ...(starredIds.length > 0 ? [patchItem(starredIds, { isStarred: false })] : []),
+          ]);
+          refreshBacklogSummary();
+        } catch (err) {
+          console.error("Failed to execute bankruptcy sweep", err);
+        }
+      },
+    });
   };
 
   const handleToggleWork = async (id: string, isWork: boolean) => {
@@ -491,12 +807,15 @@ export default function HomePage() {
   };
 
   const handleDeleteItem = (id: string) => {
-    if (selectedView === "reading_list") {
-      const removedItem = items.find((it) => it.id === id);
-      if (!removedItem) return;
-
+    const removedItem = items.find((it) => it.id === id);
+    if (!removedItem) return;
+    if (
+      selectedView === "reading_list" ||
+      (selectedView === "reading_queue" && removedItem.sourceQueue === "research_inbox")
+    ) {
       // Optimistically hide from UI
       setItems((prev) => prev.filter((it) => it.id !== id));
+      setSavedResearchItems((prev) => prev.filter((it) => it.id !== id));
       if (selectedItemId === id) setSelectedItemId(null);
 
       // Offer 5-second undo toast
@@ -505,10 +824,12 @@ export default function HomePage() {
         message: `Deleted "${removedItem.title.slice(0, 28)}..."`,
         onUndo: () => {
           setItems((prev) => [removedItem, ...prev]);
+          refreshBacklogSummary();
         },
         onCommit: async () => {
           try {
             await fetch(`/api/reading-list?id=${id}`, { method: "DELETE" });
+            refreshBacklogSummary();
           } catch (err) {
             console.error("Failed to commit deletion", err);
           }
@@ -678,10 +999,14 @@ export default function HomePage() {
     },
     {
       key: "starred",
-      label: "Saved",
+      label: "Queue",
       icon: <Star className="w-5 h-5" />,
-      active: selectedView === "starred" || selectedView === "watch_later",
-      onClick: () => selectView("starred"),
+      active:
+        selectedView === "reading_queue" ||
+        selectedView === "starred" ||
+        selectedView === "reading_list",
+      onClick: () => selectView("reading_queue"),
+      badge: savedStarredItems.length + savedResearchItems.length,
     },
     {
       key: "work",
@@ -734,6 +1059,11 @@ export default function HomePage() {
             feeds={feeds}
             boards={boards}
             totalUnread={totalUnread}
+            readLaterCount={savedStarredItems.length}
+            readLaterCap={a11ySettings.readLaterCap ?? 15}
+            watchLaterCount={savedWatchLaterCount}
+            researchCount={savedResearchItems.length}
+            researchCap={a11ySettings.researchCap ?? 10}
             selectedCategory={selectedCategory}
             selectedFeedId={selectedFeedId}
             selectedView={selectedView}
@@ -742,6 +1072,7 @@ export default function HomePage() {
             onRefreshFeeds={() => {
               refreshFeedsAndBoards();
               refreshItems();
+              refreshBacklogSummary();
             }}
             onCloseMobile={() => setMobileSidebarOpen(false)}
             onOpenGuide={() => setGuideModalOpen(true)}
@@ -854,6 +1185,7 @@ export default function HomePage() {
                 onRefresh={() => {
                   refreshItems();
                   refreshFeedsAndBoards();
+                  refreshBacklogSummary();
                 }}
                 onLoadMore={() => setLimit((l) => l + PAGE_SIZE)}
                 onOpenFeedback={() => setFeedbackModalOpen(true)}
@@ -869,6 +1201,10 @@ export default function HomePage() {
                 }}
                 isSidebarCollapsed={sidebarCollapsed}
                 workDigestName={userProfile?.workDigestName || "Work"}
+                backlogCandidates={[...savedResearchItems, ...savedStarredItems]}
+                onSelectBacklogCandidate={handleSelectBacklogCandidate}
+                onDropBacklogCandidate={handleDropBacklogCandidate}
+                onDeclareBankruptcy={handleDeclareBankruptcy}
               />
             </div>
 
@@ -891,6 +1227,7 @@ export default function HomePage() {
                 onToggleRead={handleToggleRead}
                 onToggleStar={handleToggleStar}
                 onToggleWork={handleToggleWork}
+                onSaveToResearch={handleSaveToResearchWithCap}
                 onBack={() => setSelectedItemId(null)}
                 onPrev={activeNavIndex > 0 || activeIndex > 0 ? handlePrev : undefined}
                 onNext={
@@ -903,7 +1240,10 @@ export default function HomePage() {
                 a11ySettings={a11ySettings}
                 onOpenA11y={() => setA11yModalOpen(true)}
                 onDelete={
-                  selectedView === "reading_list" && activeItem
+                  (selectedView === "reading_list" ||
+                    (selectedView === "reading_queue" &&
+                      (activeItem as any)?.sourceQueue === "research_inbox")) &&
+                  activeItem
                     ? () => handleDeleteItem(activeItem.id)
                     : undefined
                 }
@@ -991,10 +1331,12 @@ export default function HomePage() {
                     ? `Feed: ${feeds.find((f) => f.id === selectedFeedId)?.title || selectedFeedId}`
                     : selectedCategory
                       ? `Category: ${selectedCategory}`
-                      : selectedView === "reading_list"
-                        ? "Research Inbox"
-                        : selectedView === "starred"
-                          ? "Read Later (Articles)"
+                      : selectedView === "reading_queue"
+                        ? "Reading Queue"
+                        : selectedView === "reading_list"
+                          ? "Deep Research"
+                          : selectedView === "starred"
+                            ? "Starred Articles"
                           : selectedView === "watch_later"
                             ? "Watch Later (Videos)"
                             : selectedView === "work"
@@ -1041,6 +1383,9 @@ export default function HomePage() {
         }}
         onCompleted={refreshFeedsAndBoards}
       />
+
+      {/* WIP Cap ("One-In, One-Out") Gate Modal */}
+      <WipCapModal promptState={wipCapPrompt} onClose={() => setWipCapPrompt(null)} />
 
       {/* 5-Second Undo Toast */}
       <UndoToast action={undoAction} onClear={() => setUndoAction(null)} />

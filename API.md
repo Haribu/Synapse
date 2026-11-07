@@ -56,11 +56,11 @@ GET /api/items?q={searchQuery}&category={category}&unreadOnly=true&limit=25
 | `category`    | `string`  | —       | Filter by feed category (e.g. `Technology`, `Cybersecurity`, `AI & Research`). |
 | `feedId`      | `string`  | —       | Filter by specific feed UUID or slug.                                          |
 | `unreadOnly`  | `boolean` | `false` | Return only unread articles.                                                   |
-| `starredOnly` | `boolean` | `false` | Return only starred (Read Later) articles.                                     |
+| `starredOnly` | `boolean` | `false` | Return only starred (Read Later) articles (deduplicated against Deep Research items). |
 | `workOnly`    | `boolean` | `false` | Return only items flagged for your Team/Work digest.                           |
 | `videoOnly`   | `boolean` | `false` | Return only YouTube/video items.                                               |
 | `textOnly`    | `boolean` | `false` | Return only text/article items.                                                |
-| `limit`       | `number`  | `50`    | Maximum items to return (up to 100).                                           |
+| `limit`       | `number`  | `50`    | Maximum items to return (up to 500 for saved queues).                          |
 | `offset`      | `number`  | `0`     | Pagination offset.                                                             |
 
 #### Example Response
@@ -284,6 +284,14 @@ GET /api/feeds/audit
 
 ## 4. Reading List & Work Backlog Management (`/api/reading-list`)
 
+### List Deep Research Items
+
+Retrieve all active Deep Research items (`is_starred = false`) sorted by date saved (`createdAt` descending).
+
+```http
+GET /api/reading-list
+```
+
 ### Add Article or Hyperlink to Reading List / Work Backlog
 
 Save a standalone article or a hyperlink discovered within an article directly into the user's Research Inbox (`reading_list`) or Work Backlog (`isWork = true`). Saved hyperlinks are isolated from the parent article and fetch their own standalone readability content and title.
@@ -362,7 +370,7 @@ GET /api/health
 ```json
 {
   "status": "ok",
-  "version": "1.3.7",
+  "version": "1.4.0",
   "uptime": 142,
   "db": "healthy",
   "hygiene": {

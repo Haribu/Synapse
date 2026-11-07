@@ -1,7 +1,7 @@
 # Synapse — Private, AI-Native RSS++ Reader & Knowledge Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version: 1.3.13](https://img.shields.io/badge/Version-1.3.13-emerald.svg)](./package.json)
+[![Version: 1.4.0](https://img.shields.io/badge/Version-1.4.0-emerald.svg)](./package.json)
 [![CI](https://github.com/Haribu/synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Haribu/synapse/actions)
 [![Container](https://img.shields.io/badge/GHCR-ghcr.io%2Fharibu%2Fsynapse-blue)](https://github.com/Haribu/synapse/pkgs/container/synapse)
 [![MCP](https://img.shields.io/badge/MCP-Native_Server-8A2BE2)](./scripts/mcp-server.ts)
@@ -65,6 +65,7 @@ When you first launch Synapse, the interactive onboarding wizard guides you thro
 - **Warm Paper & Deep Obsidian Ink:** Low-glare palettes engineered for sustained reading comfort.
 - **Self-Hosted OpenDyslexic Typography:** Served locally (`@font-face`) with real-time controls for font sizing, line height, letter spacing, and column width.
 - **Active Dwell Attention Telemetry:** Accurately measures digested words against your reading speed (WPM) with page-visibility and 60-second inactivity watchdogs.
+- **Anti-Collector Backlog Digestion Engine:** Combats the "Collector's Fallacy" with a unified, expandable **Reading Queue** (`Deep Research` + `Starred Articles`, excluding videos), live WIP capacity caps (`count/cap`) with a "One-In, One-Out" swap modal, a daily **From Your Vault** spotlight pinned in Triage, a **Triage Zero Deep Read Pivot Card**, and 14-day article half-life decay with 1-click **Bankruptcy Sweep** (protected by 5-second Undo).
 - **Knowledge Synthesis:** 1-click note export with YAML frontmatter directly into a mounted `/obsidian-vault`, or automatic fallback to browser `.md` downloads.
 
 ### 📱 Multi-Device PWA & Mobile Sync Experience
@@ -74,7 +75,7 @@ Self-hosting Synapse does not mean sacrificing the polished, native feel of comm
 - **True Progressive Web App (PWA):** Open Synapse on iOS Safari or Android Chrome and tap **"Add to Home Screen"**. It launches as a fullscreen native app with zero browser chrome.
 - **Instant Cross-Device Sync:** Read or star an article on your train commute; your desktop workspace and mounted Obsidian vault at home update instantly.
 - **Offline Reading & Caching:** Built-in Service Worker (`sw.js`) caches reading lists and article markdown, allowing uninterrupted reading in subways or airplane mode.
-- **Thumb-Driven Ergonomics:** 5-tab fixed bottom navigation bar (`Triage`, `All`, `Saved`, `Work`, `Feeds`), touch swipe-to-triage gestures, and auto-collapsing header chrome on downward scroll.
+- **Thumb-Driven Ergonomics:** 5-tab fixed bottom navigation bar (`Triage`, `All`, `Queue`, `Work`, `Feeds`), touch swipe-to-triage gestures, and auto-collapsing header chrome on downward scroll.
 
 ### 🔒 Zero-Trust Remote Access with Cloudflare Tunnels
 

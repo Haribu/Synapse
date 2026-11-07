@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.0] - 2026-11-07
+
+### Added
+- **Unified Reading Queue & Expandable Sub-Queues (`src/components/FeedSidebar.tsx`, `src/components/ItemList.tsx`, `src/app/page.tsx`):**
+  - Consolidated text backlogs into a single, expandable **Reading Queue** (`total/totalCap`) in the sidebar and mobile `Queue` tab (strictly excluding videos, which remain in **Watch Later**).
+  - Added expandable sidebar sub-views and compact in-list segmented filtering for **All**, **Deep Research** (`reading_list`, sorted by date saved), and **Starred Articles** (`starred`, sorted by published date), plus a collapsible `+ URL` quick-save button.
+  - Eliminated double-counting between `reading_list` and `starred` in `src/lib/db/reconcile.ts`, `src/app/api/reading-list/route.ts`, and `src/app/api/items/route.ts` so `Deep Research + Starred Articles = Reading Queue` with zero overlap.
+- **Anti-Collector Backlog Digestion Engine (`src/lib/utils/backlog-nudges.ts`, `src/components/ItemList.tsx`, `src/components/WipCapModal.tsx`):**
+  - **Triage Zero Deep Read Pivot Card:** Replaces the passive `"All caught up!"` empty state in Triage (`unread`) and feed views whenever saved backlog items exist in **Deep Research** or **Starred Articles**, surfacing the oldest unfinished item with age, estimated reading time, **Read Deeply Now** action, and 1-click **Drop** action.
+  - **Interleaved Serendipity (Daily Vault Spotlight in Triage):** Pins a deterministic, daily-rotating `"From Your Vault · Saved Xd ago"` spotlight card at the top of Triage (`unread`) when saved items `>= 3` days old exist, with instant **Read Now**, **Drop**, and daily dismiss (`localStorage`) controls.
+  - **Live WIP Capacity Badges & "One-In, One-Out" Gate Modal (`FeedSidebar.tsx`, `WipCapModal.tsx`):** Displays live `count/cap` badges on `Reading Queue`, `Deep Research` (default cap `10`), and `Starred Articles` (default cap `15`). When starring an article or saving to Deep Research at capacity, opens a frictionless "One-In, One-Out" gate modal offering to **Drop Oldest & Save This Instead**, **Read Oldest Item Now**, or **Save Anyway (Override Cap)**.
+  - **14-Day Article Half-Life Decay & Stale Bankruptcy Sweep:** Automatically marks saved items `>= 14` days old with a `"Stale · Xd"` badge and subtle visual decay (`opacity-55`) across `Reading Queue`, `Deep Research`, `Starred Articles`, and `Watch Later`, accompanied by a top **Backlog Decay Banner** with a 1-click **Declare Bankruptcy (Clear X Stale)** action protected by the 5-second `UndoToast`.
+  - **Configurable WIP & Decay Guardrails (`SettingsView.tsx`, `accessibility.ts`):** Added user-adjustable controls in Settings for Daily Vault Spotlight toggle (`enableTriageSpotlight`), Starred Articles WIP cap (`readLaterCap`), Deep Research WIP cap (`researchCap`), and Half-Life Decay threshold (`staleDaysThreshold`).
+
 ## [1.3.13] - 2026-11-06
 
 ### Fixed

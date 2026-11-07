@@ -506,6 +506,90 @@ export function SettingsView({
               </label>
             </div>
           </div>
+
+          {/* Backlog Digestion & WIP Guardrails */}
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Backlog Digestion &amp; WIP Guardrails
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Prevent the Collector&apos;s Fallacy with One-In-One-Out caps, daily vault spotlights, and 14-day half-life decay
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.enableTriageSpotlight ?? true}
+                  onChange={(e) => updateA11y({ enableTriageSpotlight: e.target.checked })}
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                />
+                <span>Daily Vault Spotlight in Triage</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Read Later WIP Cap
+                </label>
+                <input
+                  type="number"
+                  min={3}
+                  max={100}
+                  value={settings.readLaterCap ?? 15}
+                  onChange={(e) =>
+                    updateA11y({ readLaterCap: Math.max(3, parseInt(e.target.value, 10) || 15) })
+                  }
+                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Prompts swap/read when starring past cap
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Research Inbox WIP Cap
+                </label>
+                <input
+                  type="number"
+                  min={3}
+                  max={100}
+                  value={settings.researchCap ?? 10}
+                  onChange={(e) =>
+                    updateA11y({ researchCap: Math.max(3, parseInt(e.target.value, 10) || 10) })
+                  }
+                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Prompts swap/read when saving past cap
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Half-Life Decay (Days)
+                </label>
+                <input
+                  type="number"
+                  min={3}
+                  max={90}
+                  value={settings.staleDaysThreshold ?? 14}
+                  onChange={(e) =>
+                    updateA11y({
+                      staleDaysThreshold: Math.max(3, parseInt(e.target.value, 10) || 14),
+                    })
+                  }
+                  className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Flags older saves for Bankruptcy sweep
+                </span>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Section 2: Navigation & Gestures Cheat Sheet */}
