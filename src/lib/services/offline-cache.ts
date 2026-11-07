@@ -19,6 +19,9 @@ export interface CachedArticle {
   isRead: boolean;
   isStarred: boolean;
   isWork: boolean;
+  userNotes?: string;
+  tags?: string;
+  sourceQueue?: "read_later" | "research_inbox" | "watch_later";
   mediaType?: string;
   publishedAt?: number | string | null;
   cachedAt: number;
@@ -26,9 +29,9 @@ export interface CachedArticle {
 
 export interface OfflineMutation {
   id?: number;
-  type: "toggle_read" | "toggle_star" | "toggle_work";
+  type: "toggle_read" | "toggle_star" | "toggle_work" | "update_notes" | "update_tags";
   itemId: string;
-  value: boolean;
+  value: any;
   timestamp: number;
 }
 
@@ -80,23 +83,42 @@ export async function saveArticlesToOfflineCache(articles: any[]): Promise<void>
 
     for (const item of articles) {
       if (!item || !item.id) continue;
-      const cached: CachedArticle = {
-        id: item.id,
-        feedId: item.feedId || "",
-        feedTitle: item.feedTitle || "",
-        title: item.title || "",
-        url: item.url || "",
-        snippet: item.snippet || "",
-        fullContentHtml: item.fullContentHtml || "",
-        fullContentMarkdown: item.fullContentMarkdown || "",
-        isRead: Boolean(item.isRead),
-        isStarred: Boolean(item.isStarred),
-        isWork: Boolean(item.isWork),
-        mediaType: item.mediaType || "article",
-        publishedAt: item.publishedAt || null,
-        cachedAt: now,
+      const getReq = store.get(item.id);
+      getReq.onsuccess = () => {
+        const existing = getReq.result as CachedArticle | undefined;
+        const userNotes =
+          typeof item.userNotes === "string" && item.userNotes.trim().length > 0
+            ? item.userNotes
+            : existing?.userNotes || "";
+        const tags =
+          Array.isArray(item.tags) && item.tags.length > 0
+            ? item.tags.join(",")
+            : typeof item.tags === "string" && item.tags.trim().length > 0
+            ? item.tags
+            : existing?.tags || "";
+
+        const cached: CachedArticle = {
+          id: item.id,
+          feedId: item.feedId || existing?.feedId || "",
+          feedTitle: item.feedTitle || existing?.feedTitle || "",
+          title: item.title || existing?.title || "",
+          url: item.url || existing?.url || "",
+          snippet: item.snippet || existing?.snippet || "",
+          fullContentHtml: item.fullContentHtml || existing?.fullContentHtml || "",
+          fullContentMarkdown: item.fullContentMarkdown || existing?.fullContentMarkdown || "",
+          isRead: item.isRead !== undefined ? Boolean(item.isRead) : Boolean(existing?.isRead),
+          isStarred:
+            item.isStarred !== undefined ? Boolean(item.isStarred) : Boolean(existing?.isStarred),
+          isWork: item.isWork !== undefined ? Boolean(item.isWork) : Boolean(existing?.isWork),
+          userNotes,
+          tags,
+          sourceQueue: item.sourceQueue || existing?.sourceQueue,
+          mediaType: item.mediaType || existing?.mediaType || "article",
+          publishedAt: item.publishedAt || existing?.publishedAt || null,
+          cachedAt: now,
+        };
+        store.put(cached);
       };
-      store.put(cached);
     }
 
     // Prune cache to MAX_CACHED_ARTICLES
@@ -126,19 +148,23 @@ export async function saveArticlesToOfflineCache(articles: any[]): Promise<void>
   }
 }
 
-/**
- * Retrieves articles from the offline store filtered by view conditions.
- */
-export async function getOfflineArticles(filter?: {
+export interface OfflineFilterOptions {
   unreadOnly?: boolean;
   starredOnly?: boolean;
   videoOnly?: boolean;
   textOnly?: boolean;
   workOnly?: boolean;
+  readingQueueOnly?: boolean;
+  readingListOnly?: boolean;
   feedId?: string;
   category?: string;
   searchQuery?: string;
-}): Promise<any[]> {
+}
+
+/**
+ * Retrieves articles from the offline store filtered by view conditions.
+ */
+export async function getOfflineArticles(filter?: OfflineFilterOptions): Promise<any[]> {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
@@ -149,21 +175,33 @@ export async function getOfflineArticles(filter?: {
       request.onsuccess = () => {
         let results = request.result as CachedArticle[];
 
-        if (filter?.unreadOnly) {
-          results = results.filter((a) => !a.isRead);
+        if (filter?.readingListOnly) {
+          results = results.filter((a) => a.sourceQueue === "research_inbox");
+        } else if (filter?.readingQueueOnly) {
+          results = results.filter(
+            (a) =>
+              a.sourceQueue === "research_inbox" ||
+              a.sourceQueue === "read_later" ||
+              a.isStarred
+          );
+        } else {
+          if (filter?.unreadOnly) {
+            results = results.filter((a) => !a.isRead);
+          }
+          if (filter?.starredOnly) {
+            results = results.filter((a) => a.isStarred || a.sourceQueue === "read_later");
+          }
+          if (filter?.workOnly) {
+            results = results.filter((a) => a.isWork);
+          }
+          if (filter?.videoOnly) {
+            results = results.filter((a) => a.mediaType === "video");
+          }
+          if (filter?.textOnly) {
+            results = results.filter((a) => a.mediaType !== "video");
+          }
         }
-        if (filter?.starredOnly) {
-          results = results.filter((a) => a.isStarred);
-        }
-        if (filter?.workOnly) {
-          results = results.filter((a) => a.isWork);
-        }
-        if (filter?.videoOnly) {
-          results = results.filter((a) => a.mediaType === "video");
-        }
-        if (filter?.textOnly) {
-          results = results.filter((a) => a.mediaType !== "video");
-        }
+
         if (filter?.feedId) {
           results = results.filter((a) => a.feedId === filter.feedId);
         }
@@ -172,7 +210,8 @@ export async function getOfflineArticles(filter?: {
           results = results.filter(
             (a) =>
               a.title.toLowerCase().includes(q) ||
-              (a.snippet && a.snippet.toLowerCase().includes(q))
+              (a.snippet && a.snippet.toLowerCase().includes(q)) ||
+              (a.userNotes && a.userNotes.toLowerCase().includes(q))
           );
         }
 
@@ -231,9 +270,9 @@ export async function getOfflineFeeds(): Promise<any[]> {
  * Enqueues a user action performed while offline to be replayed upon reconnection.
  */
 export async function queueOfflineMutation(
-  type: "toggle_read" | "toggle_star" | "toggle_work",
+  type: "toggle_read" | "toggle_star" | "toggle_work" | "update_notes" | "update_tags",
   itemId: string,
-  value: boolean
+  value: any
 ): Promise<void> {
   try {
     const db = await openDatabase();
@@ -254,9 +293,11 @@ export async function queueOfflineMutation(
     getReq.onsuccess = () => {
       if (getReq.result) {
         const updated = { ...getReq.result };
-        if (type === "toggle_read") updated.isRead = value;
-        if (type === "toggle_star") updated.isStarred = value;
-        if (type === "toggle_work") updated.isWork = value;
+        if (type === "toggle_read") updated.isRead = Boolean(value);
+        if (type === "toggle_star") updated.isStarred = Boolean(value);
+        if (type === "toggle_work") updated.isWork = Boolean(value);
+        if (type === "update_notes") updated.userNotes = String(value);
+        if (type === "update_tags") updated.tags = String(value);
         articleStore.put(updated);
       }
     };
@@ -286,33 +327,31 @@ export async function flushOfflineMutations(): Promise<number> {
     let processed = 0;
     for (const m of mutations) {
       try {
-        let endpoint = "";
-        let body: any = {};
+        const body: Record<string, any> = { id: m.itemId };
 
         if (m.type === "toggle_read") {
-          endpoint = `/api/items/${m.itemId}/read`;
-          body = { isRead: m.value };
+          body.isRead = Boolean(m.value);
         } else if (m.type === "toggle_star") {
-          endpoint = `/api/items/${m.itemId}/star`;
-          body = { isStarred: m.value };
+          body.isStarred = Boolean(m.value);
         } else if (m.type === "toggle_work") {
-          endpoint = `/api/items/${m.itemId}/work`;
-          body = { isWork: m.value };
+          body.isWork = Boolean(m.value);
+        } else if (m.type === "update_notes") {
+          body.userNotes = m.value;
+        } else if (m.type === "update_tags") {
+          body.tags = m.value;
         }
 
-        if (endpoint) {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
+        const res = await fetch("/api/items", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
 
-          if (res.ok) {
-            // Delete mutation from queue
-            const delTx = db.transaction(["mutations"], "readwrite");
-            delTx.objectStore("mutations").delete(m.id);
-            processed++;
-          }
+        if (res.ok) {
+          // Delete mutation from queue
+          const delTx = db.transaction(["mutations"], "readwrite");
+          delTx.objectStore("mutations").delete(m.id);
+          processed++;
         }
       } catch (err) {
         console.warn(`Failed to replay mutation ${m.id}`, err);

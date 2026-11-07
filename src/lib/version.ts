@@ -1,5 +1,5 @@
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.4.0";
-export const GIT_COMMIT = process.env.NEXT_PUBLIC_GIT_COMMIT || "2b7712b";
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "1.4.1";
+export const GIT_COMMIT = process.env.NEXT_PUBLIC_GIT_COMMIT || "90a9c95";
 export const BUILD_DATE = process.env.NEXT_PUBLIC_BUILD_DATE || "2026-11-07";
 export const COPYRIGHT_YEAR = "2026";
 export const COPYRIGHT_OWNER = "Harry McLaren";

@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.1] - 2026-11-07
+
+### Added
+- **Offline Research Notes & Tags Synchronization (`src/lib/services/offline-cache.ts`, `src/components/ReaderView.tsx`):**
+  - Expanded `CachedArticle` and `OfflineMutation` to support `update_notes` and `update_tags` actions.
+  - Added optimistic local caching in IndexedDB for draft research notes and tags so switching articles or navigating views while completely offline (e.g. in flight) retains notes immediately.
+  - Wired `ReaderView.tsx` note and tag persistence into the offline queue when offline or if the network fetch fails.
+- **Offline Queue-Aware Article Filtering (`src/lib/services/offline-cache.ts`, `src/app/page.tsx`):**
+  - Added `readingQueueOnly` and `readingListOnly` filters to `getOfflineArticles` so that navigating between **Reading Queue**, **Deep Research**, **Starred**, **Unread**, and **Work** views while offline correctly scopes articles to the matching queue rather than returning an unfiltered dump.
+- **Comprehensive Offline Engine Unit Test Suite (`src/lib/services/offline-cache.test.ts`):**
+  - Added 5 automated unit tests covering article caching, preserving draft user notes against stale remote overwrites, queue-aware filtering, optimistic mutation queueing, and `PATCH /api/items` synchronization replay.
+
+### Fixed
+- **Offline Mutation Flushing 404 Endpoint Repair (`src/lib/services/offline-cache.ts`):**
+  - Repaired `flushOfflineMutations` which previously attempted to call non-existent endpoints (`/api/items/${id}/read`, `/api/items/${id}/star`, `/api/items/${id}/work`), causing replay failures.
+  - Unified all offline mutations (`toggle_read`, `toggle_star`, `toggle_work`, `update_notes`, `update_tags`) onto `PATCH /api/items`, which atomically updates both `feed_items` and `reading_list` in SQLite.
+- **Reading List Star Toggle Offline Fallback (`src/app/page.tsx`):**
+  - Added offline check and error fallback to `commitToggleStar` for items in the Reading List / Deep Research queue, enqueuing a mutation if network connectivity is absent. 
+
 ## [1.4.0] - 2026-11-07
 
 ### Added

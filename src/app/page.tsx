@@ -267,6 +267,8 @@ export default function HomePage() {
         videoOnly: selectedView === "watch_later",
         textOnly: selectedView === "starred",
         workOnly: selectedView === "work",
+        readingQueueOnly: selectedView === "reading_queue",
+        readingListOnly: selectedView === "reading_list",
         feedId: selectedFeedId || undefined,
         category: selectedCategory || undefined,
         searchQuery: searchQuery || undefined,
@@ -373,6 +375,8 @@ export default function HomePage() {
         videoOnly: selectedView === "watch_later",
         textOnly: selectedView === "starred",
         workOnly: selectedView === "work",
+        readingQueueOnly: selectedView === "reading_queue",
+        readingListOnly: selectedView === "reading_list",
         feedId: selectedFeedId || undefined,
         category: selectedCategory || undefined,
         searchQuery: searchQuery || undefined,
@@ -477,21 +481,26 @@ export default function HomePage() {
         if (body.isRead !== undefined) queueOfflineMutation("toggle_read", id, body.isRead);
         if (body.isStarred !== undefined) queueOfflineMutation("toggle_star", id, body.isStarred);
         if (body.isWork !== undefined) queueOfflineMutation("toggle_work", id, body.isWork);
+        if (body.userNotes !== undefined) queueOfflineMutation("update_notes", id, body.userNotes);
+        if (body.tags !== undefined) queueOfflineMutation("update_tags", id, body.tags);
       }
       return;
     }
 
     try {
-      await fetch("/api/items", {
+      const res = await fetch("/api/items", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, ...body }),
       });
+      if (!res.ok) throw new Error("HTTP error");
     } catch {
       for (const id of ids) {
         if (body.isRead !== undefined) queueOfflineMutation("toggle_read", id, body.isRead);
         if (body.isStarred !== undefined) queueOfflineMutation("toggle_star", id, body.isStarred);
         if (body.isWork !== undefined) queueOfflineMutation("toggle_work", id, body.isWork);
+        if (body.userNotes !== undefined) queueOfflineMutation("update_notes", id, body.userNotes);
+        if (body.tags !== undefined) queueOfflineMutation("update_tags", id, body.tags);
       }
     }
   };
@@ -526,11 +535,20 @@ export default function HomePage() {
         selectedView === "reading_list" || (targetItem && !targetItem.feedId);
 
       if (isFromReadingList) {
-        await fetch("/api/reading-list", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, isStarred }),
-        });
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          queueOfflineMutation("toggle_star", id, isStarred);
+        } else {
+          try {
+            const res = await fetch("/api/reading-list", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, isStarred }),
+            });
+            if (!res.ok) queueOfflineMutation("toggle_star", id, isStarred);
+          } catch {
+            queueOfflineMutation("toggle_star", id, isStarred);
+          }
+        }
       } else {
         await patchItem(id, { isStarred });
       }

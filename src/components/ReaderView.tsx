@@ -25,6 +25,7 @@ import { ReaderPostReadCard } from "./reader/ReaderPostReadCard";
 import { ReaderLinkMenu, LinkMenuState } from "./reader/ReaderLinkMenu";
 import { ReaderLightbox, LightboxImage } from "./reader/ReaderLightbox";
 import { ReaderMobileThumbBar } from "./reader/ReaderMobileThumbBar";
+import { queueOfflineMutation } from "@/lib/services/offline-cache";
 
 export interface ReaderItem {
   id: string;
@@ -555,15 +556,31 @@ export function ReaderView({
     setIsSavingNotes(true);
     try {
       const tagsString = nextTags.join(",");
-      await fetch("/api/items", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: item.id,
-          userNotes: nextNotes,
-          tags: tagsString,
-        }),
-      });
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await queueOfflineMutation("update_notes", item.id, nextNotes);
+        await queueOfflineMutation("update_tags", item.id, tagsString);
+      } else {
+        try {
+          const res = await fetch("/api/items", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: item.id,
+              userNotes: nextNotes,
+              tags: tagsString,
+            }),
+          });
+          if (!res.ok) {
+            await queueOfflineMutation("update_notes", item.id, nextNotes);
+            await queueOfflineMutation("update_tags", item.id, tagsString);
+          }
+        } catch {
+          await queueOfflineMutation("update_notes", item.id, nextNotes);
+          await queueOfflineMutation("update_tags", item.id, tagsString);
+        }
+      }
+
       setNotesSavedToast(true);
       setTimeout(() => setNotesSavedToast(false), 2000);
       if (onItemUpdated) {
