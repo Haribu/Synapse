@@ -29,7 +29,21 @@ Run the vast majority of operations inside the standard sandbox:
 - Workspace directory scans and code inspections.
 - Static typing (`bun x tsc --noEmit`).
 
-### B. Operations Requiring Sandbox Bypass
+### B. Command Execution Standards & Inviolable Rules
+
+- **Zero Ad-Hoc `bun -e` / `node -e` / `python -c` Evals (HARD SYSTEM PROHIBITION — ENFORCED BY SANDBOXGUARD):**
+  - NEVER execute ad-hoc code evaluation one-liners (`bun -e "..."`, `node -e "..."`, `python -c "..."`, or `docker exec ... node -e "..."`).
+  - Hacking transient scripts into terminal command strings is brittle, untracked, escapes auditability, and causes quoting/permission errors.
+  - Verification, regression tests, and logic checks MUST be written as formal unit tests in `src/lib/**/*.test.ts` and run via `bun test` or `bun run test:ci`.
+  - For migrations or multi-step diagnostics, write a tracked script in `scripts/` or `<appDataDir>/brain/<conversationId>/scratch/`, execute it as a named file, and clean it up.
+- **Strict Atomic Command Shape & Zero Command Chaining (HARD SYSTEM PROHIBITION — ENFORCED BY SANDBOXGUARD):**
+  - NEVER chain multiple shell commands using `&&`, `;`, `||`, or multiline strings (e.g. `git add . && git commit ...`, `bun test && bun x tsc`).
+  - Command chaining destroys Antigravity's prefix-matching "Always Allow" auto-approval cache and prompts the operator with approval fatigue.
+  - Every shell invocation must be an atomic, single-purpose step.
+- **Dedicated Package Scripts Over Raw Invocations:**
+  - Always invoke established `package.json` scripts (`bun run test:ci`, `bun test`, `bun run bump`) rather than hand-crafting complex command lines.
+
+### C. Operations Requiring Sandbox Bypass
 
 The following actions should ONLY be executed when explicitly requested for deployment or container operations:
 
