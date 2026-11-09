@@ -40,7 +40,7 @@
     "rehydrate": "bun scripts/rehydrate.ts",
     "bump": "bun scripts/bump-version.ts",
     "mcp": "bun scripts/mcp-server.ts",
-    "prepare": "bun scripts/install-hooks.ts"
+    "hooks:install": "bun scripts/install-hooks.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
