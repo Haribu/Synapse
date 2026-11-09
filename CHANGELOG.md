@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.3] - 2026-11-09
+
+### Fixed
+- **The Register Author Headshots & Bylines Sanitization (`src/lib/utils/clean-article.ts`, `src/lib/utils/clean-article.test.ts`):**
+  - Enhanced `cleanArticleMarkdown` and `cleanArticleHtml` to strip The Register author headshots (360x360 square avatars and `Reg ... editor/writer/reporter` alt text) along with inline author names, byline links, and titles (Bug 09/11/2026).
+  - Preserved adjacent paragraph text so valid body paragraphs are never clipped when an author avatar precedes the article lead.
+- **Empty HTML Tag Soup & Markdown Fallback (`src/components/ReaderView.tsx`, `src/lib/services/sync-engine.ts`):**
+  - Hardened `ReaderView.tsx` content rendering to evaluate plain text length (`displayHtml.replace(/<[^>]*>/g, "").trim().length < 50`) rather than raw tag string length, guaranteeing seamless fallback to full Markdown when Readability returns empty tag stubs (e.g. Hospital On Call article).
+  - Added an in-place maintenance heal in `sync-engine.ts` (`rehydrateAndCleanTargetedSources`) to detect and synthesize clean HTML from stored Markdown for articles affected by empty tag soup.
+- **Truncated Article Teaser & Fallback Cascade Hardening (`src/lib/services/readability-extractor.ts`, `src/lib/services/sync-engine.ts`):**
+  - Added Lowy Institute / The Informer newsletter markers to `softStubMarkers` in `isStubOrBlocked` and updated `readability-extractor.ts` to trigger fallback cascades whenever reading prose (excluding markdown image URLs and links) is under 400 characters, restoring full article bodies for dynamic client-rendered articles (e.g. Lowy Institute satellite article).
+  - Enforced unread queue restoration (`is_read = 0`) across `sync-engine.ts` whenever broken or unextracted articles are healed during the maintenance sweep so resolved articles immediately re-appear in the user's Unread triage queue.
+
 ## [1.4.2] - 2026-11-07
 
 ### Fixed

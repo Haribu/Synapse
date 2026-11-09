@@ -191,6 +191,16 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)\s*REG AD\s*(?:\n|$)/gi, "\n\n");
 
+  // 4e-0. Strip The Register author headshot images and inline author bylines
+  md = md.replace(
+    /(?:^|\n)\s*(?:!\[[^\]]*(?:Reg [^\]]*(?:editor|writer|reporter|correspondent)|author|headshot|avatar)[^\]]*\]\(https?:\/\/(?:image\.)?theregister\.com\/[^\)]*\)|!\[[^\]]*\]\(https?:\/\/image\.theregister\.com\/[^\)]*(?:width=360|cropw=)[^\)]*\))\s*(?:[A-Za-z\s\.-]+)?(?:\[[A-Za-z\s\.-]+\]\(https?:\/\/[^\)]*theregister\.com\/author\/[^\)]*\))?(?:[^\n]*)(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*!\[(?:Image \d+:\s*)?[^\]]*(?:Reg [^\]]*(?:editor|writer|reporter|correspondent)|author|headshot|avatar)[^\]]*\]\(https?:\/\/(?:image\.)?theregister\.com\/[^\)]*\)\s*(?:\n|$)/gi,
+    "\n"
+  );
+
   // 4e-1. Strip The Register author byline with profile links, comments counts, timestamps, and Google preference promo
   md = md.replace(
     /(?:^|\n)\s*(?:[A-Za-z\s\.-]+)?\[[A-Za-z\s\.-]+\]\(https?:\/\/[^\)]*theregister\.com\/author\/[^\)]*\)[^\n]*(?:\n|$)/gi,
@@ -987,7 +997,15 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(/<p>\s*REG AD\s*<\/p>/gi, "");
-  // Strip The Register author byline with profile links, comments counts, timestamps, and Google preference promo
+  // Strip The Register author headshots and author bylines
+  html = html.replace(
+    /<img[^>]+(?:alt=["'][^"']*(?:Reg [^"']*(?:editor|writer|reporter)|author|avatar|headshot)[^"']*["']|src=["'][^"']*image\.theregister\.com\/[^\)]*(?:width=360|cropw=)[^"']*["'])[^>]*>/gi,
+    ""
+  );
+  html = html.replace(
+    /(?:[A-Za-z\s\.-]+)?<a[^>]*href=["'][^"']*theregister\.com\/author\/[^"']*["'][^>]*>[^<]*<\/a>(?:\s*(?:APAC Editor|Senior Editor|Features Editor|Managing Editor|Associate Editor|Editor|Writer|Staff|Analyst|Reporter|Correspondent))?/gi,
+    ""
+  );
   html = html.replace(
     /<p>\s*(?:[A-Za-z\s\.-]*<a[^>]*href=["'][^"']*theregister\.com\/author\/[^"']*["'][^>]*>[^<]*<\/a>[^<]*)\s*<\/p>/gi,
     ""

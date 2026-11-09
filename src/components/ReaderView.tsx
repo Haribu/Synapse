@@ -713,7 +713,8 @@ export function ReaderView({
           )?.[1] || null;
 
   let displayHtml = cleanArticleHtml(currentFullHtml || item.snippet || "", item.title);
-  if ((!displayHtml || displayHtml.trim().length < 50) && item.fullContentMarkdown) {
+  const plainTextLen = displayHtml.replace(/<[^>]*>/g, "").trim().length;
+  if ((!displayHtml || plainTextLen < 50) && item.fullContentMarkdown) {
     try {
       displayHtml = cleanArticleHtml(marked.parse(item.fullContentMarkdown) as string, item.title);
     } catch {}
@@ -1152,7 +1153,7 @@ export function ReaderView({
           )}
 
           {/* Empty Content State Fallback with 1-click Extraction */}
-          {(!displayHtml || displayHtml.trim().length < 50) && (
+          {(!displayHtml || displayHtml.replace(/<[^>]*>/g, "").trim().length < 50) && (
             <div className="my-8 p-6 rounded-2xl bg-[var(--card-bg)] border border-[var(--card-border)] text-center space-y-4">
               <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                 <Sparkles className="w-6 h-6" />

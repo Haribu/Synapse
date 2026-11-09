@@ -180,6 +180,10 @@ export function isStubOrBlocked(
     "you have reached your limit of free articles",
     "you have reached your free article limit",
     "subscribe to the interpreter",
+    "subscribe to the informer",
+    "the informer for monthly expert analysis",
+    "events for advance notice",
+    "unsubscribe from lowy institute newsletters",
     "the most-pressing world events explained",
     "independent international policy think tank",
     "next_http_error_fallback",
@@ -1235,9 +1239,19 @@ export async function extractReadableContent(targetUrl: string): Promise<Extract
   );
   let contentHtml = cleanArticleHtml(article.content || "", article.title);
 
-  // If cleanArticleMarkdown left an empty shell (< 500 chars) or stripped all body paragraphs because
-  // the article was incomplete/truncated, run the fallback cascade
-  if (contentMarkdown.length < 500 || !/[a-zA-Z]{3,}[\s\S]{100,}/.test(contentMarkdown)) {
+  // If cleanArticleMarkdown left an empty shell (< 500 chars), prose without images is short (< 400 chars),
+  // or stripped all body paragraphs because the article was incomplete/truncated, run the fallback cascade
+  const proseOnly = contentMarkdown
+    .replace(/!\[[^\]]*\]\([^\)]+\)/g, "")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .trim();
+
+  if (
+    contentMarkdown.length < 500 ||
+    proseOnly.length < 400 ||
+    !/[a-zA-Z]{3,}[\s\S]{100,}/.test(contentMarkdown)
+  ) {
     const cascaded = await runFallbackCascade(
       targetUrl,
       fetchUrl,

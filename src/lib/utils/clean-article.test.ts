@@ -421,6 +421,31 @@ The outputs of AI models are the result of a complex interplay between neurons, 
     expect(cleanedHtml).toContain("The outputs of AI models are the result of a complex interplay between neurons, weights, training, and inference.");
   });
 
+  it("strips The Register author headshots and inline bylines (Bug 09/11/2026)", () => {
+    const rawMd = `Fixes are arriving faster than new bug reports for one major Linux project
+
+![Image 4: Simon Sharwood, Reg APAC editor](https://image.theregister.com/5299461.webp?imageId=5299461&x=0.00&y=6.18&cropw=100.00&croph=66.89&width=360&height=360)Simon Sharwood[Simon Sharwood](https://www.theregister.com/author/simon-sharwood)APAC Editor
+The worst of the patchpocalypse may be behind us, according to Linus Torvalds.`;
+
+    const rawHtml = `<p>Fixes are arriving faster than new bug reports for one major Linux project</p>
+<p><img src="https://image.theregister.com/5299461.webp?imageId=5299461&amp;x=0.00&amp;y=6.18&amp;cropw=100.00&amp;croph=66.89&amp;width=360&amp;height=360" alt="Image 4: Simon Sharwood, Reg APAC editor" referrerpolicy="no-referrer">Simon Sharwood<a href="https://www.theregister.com/author/simon-sharwood">Simon Sharwood</a>APAC Editor
+The worst of the patchpocalypse may be behind us, according to Linus Torvalds.</p>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Linus Torvalds sees signs AI-prompted patch flood has peaked");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Linus Torvalds sees signs AI-prompted patch flood has peaked");
+
+    expect(cleanedMd).not.toContain("Simon Sharwood");
+    expect(cleanedMd).not.toContain("Reg APAC editor");
+    expect(cleanedMd).not.toContain("APAC Editor");
+    expect(cleanedMd).not.toContain("5299461.webp");
+    expect(cleanedMd).toContain("The worst of the patchpocalypse may be behind us");
+
+    expect(cleanedHtml).not.toContain("Simon Sharwood");
+    expect(cleanedHtml).not.toContain("Reg APAC editor");
+    expect(cleanedHtml).not.toContain("5299461.webp");
+    expect(cleanedHtml).toContain("The worst of the patchpocalypse may be behind us");
+  });
+
   it("identifies generic link text like 'Read More' or 'Continue reading' (Bug 05/11/2026)", () => {
     expect(isGenericTitle("Read More")).toBe(true);
     expect(isGenericTitle("read more")).toBe(true);

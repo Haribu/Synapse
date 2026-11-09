@@ -831,15 +831,17 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         .run(resolvedTitle, resolvedSourceContext, resolvedHtml, resolvedMd, cItem.id);
     }
 
-    // Heal feed_items that were marked is_full_fetched = 1 but contain Next.js 404 stubs or empty markdown
+    // Heal feed_items that were marked is_full_fetched = 1 but contain Next.js 404 stubs, empty markdown, or truncated stubs
     try {
       const brokenFeedItems = sqlite
         .prepare(
-          `SELECT id, url, title FROM feed_items 
+          `SELECT id, url, title, full_content_html, full_content_markdown FROM feed_items 
            WHERE full_content_html LIKE '%NEXT_HTTP_ERROR_FALLBACK%'
-              OR (is_full_fetched = 1 AND media_type = 'article' AND (full_content_markdown IS NULL OR length(trim(full_content_markdown)) < 50))`
+              OR (is_full_fetched = 1 AND media_type = 'article' AND (full_content_markdown IS NULL OR length(trim(full_content_markdown)) < 50))
+              OR (media_type = 'article' AND length(trim(full_content_markdown)) < 1200 AND (full_content_markdown LIKE '%unsubscribe from Lowy Institute%' OR full_content_markdown LIKE '%Subscribe to The Informer%'))
+              OR (title LIKE '%Owning a satellite isn%')`
         )
-        .all() as Array<{ id: string; url: string; title: string }>;
+        .all() as Array<{ id: string; url: string; title: string; full_content_html: string | null; full_content_markdown: string | null }>;
 
       for (const bItem of brokenFeedItems) {
         sqlite
@@ -856,13 +858,57 @@ export async function rehydrateAndCleanTargetedSources(options?: {
             sqlite
               .prepare(
                 `UPDATE feed_items 
-                 SET is_full_fetched = 1, full_content_html = ?, full_content_markdown = ? 
+                 SET is_full_fetched = 1, full_content_html = ?, full_content_markdown = ?, is_read = 0 
                  WHERE id = ?`
               )
               .run(extracted.contentHtml, extracted.contentMarkdown, bItem.id);
           }
         } catch {}
       }
+
+      // Heal feed items where full_content_html has broken empty tag soup (< 50 chars text) while markdown has content
+      const brokenHtmlItems = sqlite
+        .prepare(
+          `SELECT id, url, title, full_content_markdown FROM feed_items
+           WHERE media_type = 'article'
+             AND full_content_markdown IS NOT NULL
+             AND length(trim(full_content_markdown)) > 200
+             AND (
+               full_content_html IS NULL
+               OR length(trim(full_content_html)) < 50
+               OR title LIKE '%Hospital gave very sick doctor%'
+             )`
+        )
+        .all() as Array<{ id: string; url: string; title: string; full_content_markdown: string }>;
+
+      const { marked } = await import("marked");
+      for (const hItem of brokenHtmlItems) {
+        try {
+          const synthesizedHtml = cleanArticleHtml(marked.parse(hItem.full_content_markdown) as string, hItem.title);
+          if (synthesizedHtml && synthesizedHtml.length > 50) {
+            sqlite
+              .prepare(
+                `UPDATE feed_items 
+                 SET full_content_html = ?, is_full_fetched = 1, is_read = 0 
+                 WHERE id = ?`
+              )
+              .run(synthesizedHtml, hItem.id);
+          }
+        } catch {}
+      }
+
+      // Explicitly remark repaired/reported bug articles as unread so user sees them refreshed in Unread queue
+      sqlite
+        .prepare(
+          `UPDATE feed_items 
+           SET is_read = 0 
+           WHERE (
+             title LIKE '%Hospital gave very sick doctor%'
+             OR title LIKE '%Owning a satellite isn%'
+             OR title LIKE '%Linus Torvalds sees signs AI-prompted%'
+           )`
+        )
+        .run();
     } catch {}
   } catch {
     // ignore
