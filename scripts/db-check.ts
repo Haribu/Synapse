@@ -4,40 +4,14 @@
  * Never touches the database file directly from the host.
  */
 
-import fs from "fs";
-
-export {};
-
-const SYNAPSE_PORT = process.env.SYNAPSE_PORT || "3005";
-const BASE_URL = `http://127.0.0.1:${SYNAPSE_PORT}`;
-
-function resolveAllowedEmail(): string {
-  if (process.env.ALLOWED_EMAILS) {
-    return process.env.ALLOWED_EMAILS.split(",")[0]?.trim() || "";
-  }
-  try {
-    if (fs.existsSync("docker-compose.override.yml")) {
-      const content = fs.readFileSync("docker-compose.override.yml", "utf8");
-      const match = content.match(/ALLOWED_EMAILS=([^\s\n]+)/);
-      if (match?.[1]) {
-        return match[1].split(",")[0]?.trim() || "";
-      }
-    }
-  } catch {}
-  return "";
-}
+import { authenticatedFetch, resolveBaseUrl } from "./client";
 
 async function main() {
-  console.log(`[Synapse DB] Checking database integrity via ${BASE_URL}/api/admin/backup...`);
+  const baseUrl = resolveBaseUrl();
+  console.log(`[Synapse DB] Checking database integrity via ${baseUrl}/api/admin/backup...`);
 
   try {
-    const allowedEmail = resolveAllowedEmail();
-    const headers: Record<string, string> = { "User-Agent": "Synapse-DB-Check/1.0" };
-    if (allowedEmail) {
-      headers["CF-Access-Authenticated-User-Email"] = allowedEmail;
-    }
-
-    const res = await fetch(`${BASE_URL}/api/admin/backup`, { headers });
+    const res = await authenticatedFetch("/api/admin/backup", {}, "Synapse-DB-Check/1.0");
 
     if (!res.ok) {
       const err = await res.text();

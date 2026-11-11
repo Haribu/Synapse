@@ -179,10 +179,15 @@ export function ReaderView({
     }
     if (prevItemIdRef.current !== item?.id) {
       setMobileBarsHidden(false);
-      setScrollProgress(0);
-      lastScrollTopRef.current = 0;
+      let savedTop = 0;
+      if (typeof window !== "undefined" && item?.id) {
+        try {
+          savedTop = Number(sessionStorage.getItem(`synapse_scroll_${item.id}`) || 0);
+        } catch {}
+      }
+      lastScrollTopRef.current = savedTop;
       if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = 0;
+        scrollContainerRef.current.scrollTop = savedTop;
       }
       prevItemIdRef.current = item?.id || null;
     }
@@ -196,6 +201,16 @@ export function ReaderView({
       setScrollProgress(Math.min(100, Math.max(0, (top / maxScroll) * 100)));
     } else {
       setScrollProgress(0);
+    }
+
+    if (item?.id && typeof window !== "undefined") {
+      try {
+        if (maxScroll > 20 && top / maxScroll >= 0.98) {
+          sessionStorage.removeItem(`synapse_scroll_${item.id}`);
+        } else {
+          sessionStorage.setItem(`synapse_scroll_${item.id}`, String(top));
+        }
+      } catch {}
     }
 
     const delta = top - lastScrollTopRef.current;

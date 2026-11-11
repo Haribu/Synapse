@@ -482,6 +482,7 @@ export async function syncAllFeeds(options?: {
         title: feeds.title,
         feedUrl: feeds.feedUrl,
         lastFetchedAt: feeds.lastFetchedAt,
+        errorCount: feeds.errorCount,
       })
       .from(feeds)
       .all();
@@ -491,14 +492,23 @@ export async function syncAllFeeds(options?: {
 
     const isYouTube = (url: string) => url.includes("youtube.com") || url.includes("youtu.be");
 
-    // Adaptive Intervals: 25 minutes for RSS/news, 2 hours for YouTube
+    // Adaptive Intervals: 25 minutes for healthy RSS/news, 2 hours for YouTube, with exponential backoff on failing feeds
     const STANDARD_INTERVAL_MS = 25 * 60 * 1000;
     const YOUTUBE_INTERVAL_MS = 2 * 60 * 60 * 1000;
+    const DEGRADED_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours for errorCount >= 5
+    const STALLED_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours for errorCount >= 25
 
     const isEligible = (f: (typeof allFeeds)[0]) => {
       if (forceAll) return true;
       if (!f.lastFetchedAt) return true;
       const elapsed = startTime - new Date(f.lastFetchedAt).getTime();
+      const errCount = f.errorCount || 0;
+      if (errCount >= 25) {
+        return elapsed >= STALLED_INTERVAL_MS;
+      }
+      if (errCount >= 5) {
+        return elapsed >= DEGRADED_INTERVAL_MS;
+      }
       return elapsed >= (isYouTube(f.feedUrl) ? YOUTUBE_INTERVAL_MS : STANDARD_INTERVAL_MS);
     };
 

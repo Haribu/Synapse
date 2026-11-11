@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.5] - 2026-11-11
+
+### Added
+- **Centralized Script Authentication & HTTP Client (`scripts/client.ts`):**
+  - Created shared CLI client utility consolidating `resolveBaseUrl()`, `resolveAllowedEmail()`, and authenticated `authenticatedFetch()` across all operational scripts (`verify-deploy.ts`, `db-check.ts`, `db-backup.ts`, `rehydrate.ts`).
+- **Silent Feed Degradation Indicators (`src/components/FeedSidebar.tsx`):**
+  - Added visual amber warning indicator dots next to feeds in `FeedSidebar.tsx` when `errorCount >= 5`, surfacing degraded feeds with tooltip diagnostics directly in the daily triage reading view.
+
+### Changed
+- **Adaptive Exponential Sync Backoff (`src/lib/services/sync-engine.ts`):**
+  - Enhanced background sync scheduling eligibility: feeds with `>= 5` errors back off to 6-hour polling; feeds with `>= 25` errors throttle to 24-hour daily polling.
+  - Prevents persistent connection timeouts and worker thread stalls during scheduled sync cycles while preserving manual on-demand force-syncs.
+- **Reading Scroll Position & Session Memory (`src/components/ReaderView.tsx`):**
+  - Added non-intrusive client-side session scroll memory via `sessionStorage`, seamlessly restoring reading position when navigating between articles or tabs during deep reading sessions.
+
 ## [1.4.4] - 2026-11-11
 
 ### Fixed

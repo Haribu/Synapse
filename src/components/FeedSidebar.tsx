@@ -37,6 +37,8 @@ interface Feed {
   title: string;
   category: string;
   unreadCount?: number;
+  errorCount?: number;
+  lastError?: string | null;
 }
 
 interface Board {
@@ -731,7 +733,15 @@ export function FeedSidebar({
                                 : "text-slate-700 dark:text-slate-200 font-medium hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-900/60"
                             }`}
                           >
-                            <span className="truncate max-w-[140px] text-left">{feed.title}</span>
+                            <span className="truncate max-w-[140px] text-left flex items-center gap-1.5">
+                              <span className="truncate">{feed.title}</span>
+                              {(feed.errorCount || 0) >= 5 && (
+                                <span
+                                  title={`${feed.errorCount} sync failures: ${feed.lastError || "Unreachable"}`}
+                                  className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"
+                                />
+                              )}
+                            </span>
                             <span className="text-[10px] px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded font-mono">
                               {feed.unreadCount}
                             </span>
@@ -783,8 +793,14 @@ export function FeedSidebar({
                                       : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/40 dark:hover:bg-slate-900/40"
                                   }`}
                                 >
-                                  <span className="truncate max-w-[140px] text-left">
-                                    {feed.title}
+                                  <span className="truncate max-w-[140px] text-left flex items-center gap-1.5">
+                                    <span className="truncate">{feed.title}</span>
+                                    {(feed.errorCount || 0) >= 5 && (
+                                      <span
+                                        title={`${feed.errorCount} sync failures: ${feed.lastError || "Unreachable"}`}
+                                        className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"
+                                      />
+                                    )}
                                   </span>
                                 </button>
                               );

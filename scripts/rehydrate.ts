@@ -4,25 +4,27 @@
  * via the running Synapse container API.
  */
 
-export {};
-
-const SYNAPSE_PORT = process.env.SYNAPSE_PORT || "3005";
-const BASE_URL = `http://127.0.0.1:${SYNAPSE_PORT}`;
+import { authenticatedFetch, resolveBaseUrl } from "./client";
 
 async function main() {
   const args = process.argv.slice(2);
   const refetch = args.includes("--refetch");
   const noSync = args.includes("--no-sync");
 
-  console.log(`[Synapse Rehydrate] Triggering targeted rehydration on ${BASE_URL}...`);
+  const baseUrl = resolveBaseUrl();
+  console.log(`[Synapse Rehydrate] Triggering targeted rehydration on ${baseUrl}...`);
   if (refetch) console.log(`  Mode: Full network re-fetch enabled (--refetch)`);
 
   try {
-    const res = await fetch(`${BASE_URL}/api/admin/rehydrate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refetch, sync: !noSync }),
-    });
+    const res = await authenticatedFetch(
+      "/api/admin/rehydrate",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refetch, sync: !noSync }),
+      },
+      "Synapse-Rehydrate/1.0"
+    );
 
     if (!res.ok) {
       const err = await res.text();
