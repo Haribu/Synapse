@@ -191,13 +191,9 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)\s*REG AD\s*(?:\n|$)/gi, "\n\n");
 
-  // 4e-0. Strip The Register author headshot images and inline author bylines
+  // 4e-0. Strip author headshot/avatar images and inline author bylines across all publications
   md = md.replace(
-    /(?:^|\n)\s*(?:!\[[^\]]*(?:Reg [^\]]*(?:editor|writer|reporter|correspondent)|author|headshot|avatar)[^\]]*\]\(https?:\/\/(?:image\.)?theregister\.com\/[^\)]*\)|!\[[^\]]*\]\(https?:\/\/image\.theregister\.com\/[^\)]*(?:width=360|cropw=)[^\)]*\))\s*(?:[A-Za-z\s\.-]+)?(?:\[[A-Za-z\s\.-]+\]\(https?:\/\/[^\)]*theregister\.com\/author\/[^\)]*\))?(?:[^\n]*)(?:\n|$)/gi,
-    "\n"
-  );
-  md = md.replace(
-    /(?:^|\n)\s*!\[(?:Image \d+:\s*)?[^\]]*(?:Reg [^\]]*(?:editor|writer|reporter|correspondent)|author|headshot|avatar)[^\]]*\]\(https?:\/\/(?:image\.)?theregister\.com\/[^\)]*\)\s*(?:\n|$)/gi,
+    /(?:^|\n)[^\S\r\n]*(?:!\[(?:Image \d+:\s*)?[^\]]*(?:author|headshot|avatar|profile(?:\s+photo|\s+pic|\s+picture)?|Reg [^\]]*(?:editor|writer|reporter|correspondent))[^\]]*\]\([^\)]+\)|!\[[^\]]*\]\([^\)]*(?:\/authors?\/|\/avatars?\/|\/headshots?\/|author-photo|author_photo|avatar|profile-pic|gravatar\.com|image\.theregister\.com\/[^\)]*(?:width=360|cropw=))[^\)]*\))[^\S\r\n]*(?:[A-Za-z\.-]+[^\S\r\n]*)*(?:\[[A-Za-z\.-]+[^\S\r\n]*\]\([^\)]*\))?[^\n]*(?:\n|$)/gi,
     "\n"
   );
 
@@ -221,8 +217,12 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
 
   // 4e-2. Strip The Register leading "READ MORE" related story section
   md = md.replace(
-    /(?:^|\n)#{1,6}\s*READ MORE\s*\n+(?:\*\s+#{1,6}\s+\[[^\n]+\]\([^\)]+\)\s*\n*)+/gi,
-    "\n"
+    /(?:^|\n)#{1,6}\s*READ MORE\b[\s\S]*?(?=\n\n(?:[A-Z0-9#]|!\[)|$)/gi,
+    "\n\n"
+  );
+  md = md.replace(
+    /(?:^|\n)#{1,6}\s*READ MORE\b\s*(?:\n+[*+-]\s+(?:#{1,6}\s+)?\[?[^\n]+\]?(?:\([^\)]+\))?[^\n]*)+/gi,
+    "\n\n"
   );
 
   // 4e-2. Strip BleepingComputer Jina reader navigation, breadcrumbs, tags, and footer comments
@@ -997,9 +997,9 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(/<p>\s*REG AD\s*<\/p>/gi, "");
-  // Strip The Register author headshots and author bylines
+  // Strip author headshots and avatars across all publications
   html = html.replace(
-    /<img[^>]+(?:alt=["'][^"']*(?:Reg [^"']*(?:editor|writer|reporter)|author|avatar|headshot)[^"']*["']|src=["'][^"']*image\.theregister\.com\/[^\)]*(?:width=360|cropw=)[^"']*["'])[^>]*>/gi,
+    /<img[^>]+(?:alt=["'][^"']*(?:author|avatar|headshot|profile\s+(?:photo|pic|picture)|Reg [^"']*(?:editor|writer|reporter))[^"']*["']|src=["'][^"']*(?:\/authors?\/|\/avatars?\/|\/headshots?\/|author-photo|author_photo|gravatar\.com|image\.theregister\.com\/[^\)]*(?:width=360|cropw=))[^"']*["'])[^>]*>/gi,
     ""
   );
   html = html.replace(
@@ -1023,7 +1023,14 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   // Strip The Register leading "READ MORE" related story list
-  html = html.replace(/<h3>READ MORE<\/h3>\s*<ul>[\s\S]*?<\/ul>/gi, "");
+  html = html.replace(
+    /<h[1-6][^>]*>\s*READ MORE\s*<\/h[1-6]>\s*(?:<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>)/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*<strong>\s*READ MORE\s*<\/strong>\s*<\/p>\s*(?:<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>)/gi,
+    ""
+  );
 
   // 9c-3. Strip Dark Reading / Cyber portal bracketed or unbracketed author/read-time cards
   html = html.replace(

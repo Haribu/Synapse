@@ -839,7 +839,8 @@ export async function rehydrateAndCleanTargetedSources(options?: {
            WHERE full_content_html LIKE '%NEXT_HTTP_ERROR_FALLBACK%'
               OR (is_full_fetched = 1 AND media_type = 'article' AND (full_content_markdown IS NULL OR length(trim(full_content_markdown)) < 50))
               OR (media_type = 'article' AND length(trim(full_content_markdown)) < 1200 AND (full_content_markdown LIKE '%unsubscribe from Lowy Institute%' OR full_content_markdown LIKE '%Subscribe to The Informer%'))
-              OR (title LIKE '%Owning a satellite isn%')`
+              OR (title LIKE '%Owning a satellite isn%')
+              OR (title LIKE '%The Luxury of Children%')`
         )
         .all() as Array<{ id: string; url: string; title: string; full_content_html: string | null; full_content_markdown: string | null }>;
 
@@ -906,6 +907,9 @@ export async function rehydrateAndCleanTargetedSources(options?: {
              title LIKE '%Hospital gave very sick doctor%'
              OR title LIKE '%Owning a satellite isn%'
              OR title LIKE '%Linus Torvalds sees signs AI-prompted%'
+             OR title LIKE '%Microsoft takes three decades%'
+             OR title LIKE '%AI echo chambers and sanity in tech leadership%'
+             OR title LIKE '%The Luxury of Children%'
            )`
         )
         .run();

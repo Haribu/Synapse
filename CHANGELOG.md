@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.4] - 2026-11-11
+
+### Fixed
+- **MDSec Feed Cloudflare Protection & Stalled Sync Fix (`src/lib/services/feed-fetcher.ts`):**
+  - Added `mdsec.co.uk` to `isCloudflareLikely`, ensuring feed requests send real browser User-Agent and `Accept-Language` headers rather than getting challenged or stalled into 15s timeouts by Cloudflare bot protection.
+- **Universal Author Headshot & Avatar Stripping (`src/lib/utils/clean-article.ts`, `src/lib/utils/clean-article.test.ts`):**
+  - Expanded author image removal from The Register to all publishers across both Markdown (`cleanArticleMarkdown`) and HTML (`cleanArticleHtml`).
+  - Correctly strips author avatars, headshots, profile pictures, and Gravatar thumbnails while strictly preserving adjacent paragraph prose and inline content.
+- **The Register Leading "READ MORE" Frontmatter Stripping (`src/lib/utils/clean-article.ts`, `src/lib/utils/clean-article.test.ts`):**
+  - Replaced brittle header-level regex with generalized parsing matching `READ MORE` story list sections regardless of markdown heading depth, bullet character, or link wrapper.
+  - Added HTML cleaner rules matching `<h3>READ MORE</h3>` and `<p><strong>READ MORE</strong></p>` story lists.
+- **Foreign Affairs & Bugged Article Unread Queue Restoration (`src/lib/services/sync-engine.ts`):**
+  - Added "The Luxury of Children" and reported bug articles to the startup rehydration and healing pipeline (`rehydrateAndCleanTargetedSources`), clearing stale/broken stubs and re-extracting readable content.
+  - Automatically remarks repaired bug articles as unread (`is_read = 0`) so they immediately surface in the user's Unread queue for review.
+- **Cloudflare Access Header Support for Database Maintenance Scripts (`scripts/db-check.ts`, `scripts/db-backup.ts`):**
+  - Added `resolveAllowedEmail()` to automatically inject `CF-Access-Authenticated-User-Email` when `AUTH_MODE=cloudflare` is enabled, resolving HTTP 403 errors during local `bun run db:check` and `bun run db:backup` runs.
+
 ## [1.4.3] - 2026-11-09
 
 ### Fixed

@@ -459,4 +459,49 @@ The worst of the patchpocalypse may be behind us, according to Linus Torvalds.</
     expect(isGenericTitle("Weight-Space Programming fiddles with nerd knobs")).toBe(false);
     expect(isGenericTitle("What’s happened to the global rules-based order?")).toBe(false);
   });
+
+  it("strips The Register 'READ MORE' front matter variants (Bug 10/11/2026)", () => {
+    const rawMd = `### READ MORE
+
+*   [Windows 11 update tweaks Sticky Keys shortcut behavior](https://www.theregister.com/2026/11/08/sticky_keys_turn_off/)
+*   [Microsoft addresses accessibility prompt complaints](https://www.theregister.com/2026/11/07/accessibility_complaints/)
+
+After nearly thirty years of complaints from furious PC gamers who accidentally hit Shift five times, Microsoft is finally fixing Sticky Keys.`;
+
+    const rawHtml = `<h3>READ MORE</h3>
+<ul>
+  <li><a href="https://www.theregister.com/2026/11/08/sticky_keys_turn_off/">Windows 11 update tweaks Sticky Keys shortcut behavior</a></li>
+</ul>
+<p>After nearly thirty years of complaints from furious PC gamers who accidentally hit Shift five times, Microsoft is finally fixing Sticky Keys.</p>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Microsoft takes three decades to make Sticky Keys less sticky");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Microsoft takes three decades to make Sticky Keys less sticky");
+
+    expect(cleanedMd).not.toContain("READ MORE");
+    expect(cleanedMd).not.toContain("Sticky Keys shortcut behavior");
+    expect(cleanedMd).toContain("After nearly thirty years of complaints from furious PC gamers");
+
+    expect(cleanedHtml).not.toContain("READ MORE");
+    expect(cleanedHtml).not.toContain("Sticky Keys shortcut behavior");
+    expect(cleanedHtml).toContain("After nearly thirty years of complaints from furious PC gamers");
+  });
+
+  it("strips author headshots and avatars universally across publishers (Bug 10/11/2026)", () => {
+    const rawMd = `![Image 1: Author headshot of Alex](https://lavx.hu/assets/images/authors/alex-avatar.jpg)
+Tech leaders often find themselves trapped in echo chambers of their own making.`;
+
+    const rawHtml = `<p><img src="https://lavx.hu/assets/images/authors/alex-avatar.jpg" alt="Author headshot of Alex" /></p>
+<p>Tech leaders often find themselves trapped in echo chambers of their own making.</p>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "AI echo chambers and sanity in tech leadership: Three case studies");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "AI echo chambers and sanity in tech leadership: Three case studies");
+
+    expect(cleanedMd).not.toContain("alex-avatar.jpg");
+    expect(cleanedMd).not.toContain("Author headshot");
+    expect(cleanedMd).toContain("Tech leaders often find themselves trapped in echo chambers");
+
+    expect(cleanedHtml).not.toContain("alex-avatar.jpg");
+    expect(cleanedHtml).not.toContain("Author headshot");
+    expect(cleanedHtml).toContain("Tech leaders often find themselves trapped in echo chambers");
+  });
 });

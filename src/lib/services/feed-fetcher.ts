@@ -353,7 +353,8 @@ export async function fetchFeed(
     feedUrl.includes("curatedintel.org") ||
     feedUrl.includes("github.blog") ||
     feedUrl.includes("securelist.com") ||
-    feedUrl.includes("jordanbpeterson.com");
+    feedUrl.includes("jordanbpeterson.com") ||
+    feedUrl.includes("mdsec.co.uk");
 
   const headers: Record<string, string> = {
     "User-Agent":
