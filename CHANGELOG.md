@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.8] - 2026-11-12
+
+### Fixed
+- **Content Cleaning & Publisher Front Matter Removal (`src/lib/utils/clean-article.ts`):**
+  - Stripped Foreign Affairs issue dates (e.g. `November/December 2024`), publication timestamps, unicode author bylines, audio toolbars (`Audio: Listen to this article`), action bars (`Share | Save | Print | Download`), and author affiliation bio footers.
+  - Generalized "READ MORE" related story section cleaners across both Markdown and HTML to catch bold headers (`**READ MORE:**`), bulleted story links, and container classes across The Register and other syndicators.
+- **Substack & Tracking URL Normalization & Read State Preservation (`src/lib/services/link-cleaner.ts`, `src/lib/services/sync-engine.ts`):**
+  - Enhanced `cleanUrl` to strip Substack and syndication tracking query parameters (`r`, `publication_id`, `post_id`) and normalize trailing slashes on pathname.
+  - In `syncFeed`, indexed existing feed items by `guid`, `url`, `cleanUrl(url)`, and normalized `title` (per feed) to eliminate duplicate article insertions caused by fluctuating syndication parameters.
+  - Removed unconditional unread remarking (`SET is_read = 0`) from startup hygiene sweeps and added deduplication preserving read status (`is_read = 1`).
+- **Hydration Diagnostics & Markdown Fallback Synthesis (`src/app/api/items/[id]/hydrate/route.ts`, `src/components/ReaderView.tsx`):**
+  - Added fallback HTML synthesis from existing Markdown via `marked` when web extraction returns empty tag soup (<50 chars plain text).
+  - Provided clear diagnostic error details in 422 JSON response explaining when upstream origin servers block automated extraction or return insufficient content, prompting user to view the web original.
+
 ## [1.4.7] - 2026-11-12
 
 ### Fixed

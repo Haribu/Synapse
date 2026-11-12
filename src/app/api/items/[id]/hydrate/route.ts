@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { feeds, feedItems, readingList } from "@/lib/db/schema";
 import { extractReadableContent } from "@/lib/services/readability-extractor";
+import { cleanArticleHtml } from "@/lib/utils/clean-article";
 import { eq } from "drizzle-orm";
+import { marked } from "marked";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +14,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const feedItem = db.select().from(feedItems).where(eq(feedItems.id, id)).get();
 
     if (feedItem) {
-      const extracted = await extractReadableContent(feedItem.url);
+      let extracted = await extractReadableContent(feedItem.url);
 
-      if (!extracted || !extracted.contentHtml || extracted.contentHtml.length < 50) {
+      // Fallback: If web extraction yielded insufficient HTML text (< 50 chars) but we already have substantive markdown,
+      // synthesize clean HTML directly from stored markdown!
+      const plainTextLen = extracted?.contentHtml?.replace(/<[^>]*>/g, "").trim().length || 0;
+      if (
+        (!extracted || !extracted.contentHtml || plainTextLen < 50) &&
+        feedItem.fullContentMarkdown &&
+        feedItem.fullContentMarkdown.trim().length >= 100
+      ) {
+        const synthHtml = cleanArticleHtml(marked.parse(feedItem.fullContentMarkdown) as string, feedItem.title);
+        if (synthHtml && synthHtml.replace(/<[^>]*>/g, "").trim().length >= 50) {
+          extracted = {
+            title: feedItem.title,
+            contentMarkdown: feedItem.fullContentMarkdown,
+            contentHtml: synthHtml,
+          };
+        }
+      }
+
+      const finalPlainLen = extracted?.contentHtml?.replace(/<[^>]*>/g, "").trim().length || 0;
+      if (!extracted || !extracted.contentHtml || finalPlainLen < 50) {
+        let domain = "";
+        try {
+          domain = new URL(feedItem.url).hostname;
+        } catch {}
         return NextResponse.json(
-          { error: "Could not extract readable article content" },
+          {
+            error: "Could not extract readable article content",
+            details: `Origin${domain ? ` (${domain})` : ""} returned insufficient body text or blocked automated extraction. Tap "Open in Web" to read directly.`
+          },
           { status: 422 }
         );
       }

@@ -8,6 +8,7 @@ import crypto from "crypto";
 import TurndownService from "turndown";
 import { cleanArticleMarkdown, cleanAuthor } from "@/lib/utils/clean-article";
 import { cleanArticleHtml } from "@/lib/utils/clean-article";
+import { cleanUrl } from "@/lib/services/link-cleaner";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -229,21 +230,28 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
     let newItemsCount = 0;
     let updatedDatesCount = 0;
     const existingRowsStmt = sqlite.prepare(`
-      SELECT id, guid, url, published_at, created_at FROM feed_items WHERE feed_id = ?
+      SELECT id, guid, url, title, published_at, created_at FROM feed_items WHERE feed_id = ?
     `);
     const existingRows = existingRowsStmt.all(feedId) as {
       id: string;
       guid: string;
       url: string;
+      title: string;
       published_at: number | null;
       created_at: number;
     }[];
 
     const existingByGuid = new Map<string, (typeof existingRows)[0]>();
     const existingByUrl = new Map<string, (typeof existingRows)[0]>();
+    const existingByCleanUrl = new Map<string, (typeof existingRows)[0]>();
+    const existingByTitle = new Map<string, (typeof existingRows)[0]>();
     for (const r of existingRows) {
       if (r.guid) existingByGuid.set(r.guid, r);
-      if (r.url) existingByUrl.set(r.url, r);
+      if (r.url) {
+        existingByUrl.set(r.url, r);
+        existingByCleanUrl.set(cleanUrl(r.url), r);
+      }
+      if (r.title) existingByTitle.set(r.title.trim().toLowerCase(), r);
     }
 
     const updatePublishedAtStmt = sqlite.prepare(`
@@ -265,10 +273,14 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
 
         const isFutureDated = !!item.publishedAt && item.publishedAt.getTime() > futureCutoffMs;
         const effectivePublishedAt = isFutureDated ? now : (item.publishedAt ?? null);
+        const cleanItemUrl = cleanUrl(item.url);
+        const normalizedItemTitle = item.title ? item.title.trim().toLowerCase() : "";
 
         const existing =
           (item.guid ? existingByGuid.get(item.guid) : undefined) ||
-          (item.url ? existingByUrl.get(item.url) : undefined);
+          (item.url ? existingByUrl.get(item.url) : undefined) ||
+          (cleanItemUrl ? existingByCleanUrl.get(cleanItemUrl) : undefined) ||
+          (normalizedItemTitle ? existingByTitle.get(normalizedItemTitle) : undefined);
 
         if (existing) {
           // If existing item has no publishedAt, or its publishedAt was corrupted/defaulted to sync time (abs diff <= 5s),
@@ -307,13 +319,15 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
           }
         }
 
+        const newId = crypto.randomUUID();
+        const finalUrl = cleanItemUrl || item.url;
         db.insert(feedItems)
           .values({
-            id: crypto.randomUUID(),
+            id: newId,
             feedId,
             guid: item.guid,
             title: item.title,
-            url: item.url,
+            url: finalUrl,
             author: cleanAuthor(item.author) || null,
             snippet: item.snippet ?? null,
             fullContentHtml: item.content ?? null,
@@ -326,6 +340,19 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
             createdAt: now,
           })
           .run();
+
+        const createdRow = {
+          id: newId,
+          guid: item.guid,
+          url: finalUrl,
+          title: item.title,
+          published_at: effectivePublishedAt ? Math.floor(effectivePublishedAt.getTime() / 1000) : null,
+          created_at: Math.floor(now.getTime() / 1000),
+        };
+        if (item.guid) existingByGuid.set(item.guid, createdRow);
+        existingByUrl.set(finalUrl, createdRow);
+        existingByCleanUrl.set(finalUrl, createdRow);
+        if (normalizedItemTitle) existingByTitle.set(normalizedItemTitle, createdRow);
 
         inserted++;
       }
@@ -906,7 +933,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       // Heal feed items where full_content_html has broken empty tag soup (< 50 chars text) while markdown has content
       const brokenHtmlItems = sqlite
         .prepare(
-          `SELECT id, url, title, full_content_markdown FROM feed_items
+          `SELECT id, url, title, full_content_markdown, is_read FROM feed_items
            WHERE media_type = 'article'
              AND full_content_markdown IS NOT NULL
              AND length(trim(full_content_markdown)) > 200
@@ -916,17 +943,17 @@ export async function rehydrateAndCleanTargetedSources(options?: {
                OR title LIKE '%Hospital gave very sick doctor%'
              )`
         )
-        .all() as Array<{ id: string; url: string; title: string; full_content_markdown: string }>;
+        .all() as Array<{ id: string; url: string; title: string; full_content_markdown: string; is_read: number }>;
 
       const { marked } = await import("marked");
       for (const hItem of brokenHtmlItems) {
         try {
           const synthesizedHtml = cleanArticleHtml(marked.parse(hItem.full_content_markdown) as string, hItem.title);
-          if (synthesizedHtml && synthesizedHtml.length > 50) {
+          if (synthesizedHtml && synthesizedHtml.replace(/<[^>]*>/g, "").trim().length >= 50) {
             sqlite
               .prepare(
                 `UPDATE feed_items 
-                 SET full_content_html = ?, is_full_fetched = 1, is_read = 0 
+                 SET full_content_html = ?, is_full_fetched = 1 
                  WHERE id = ?`
               )
               .run(synthesizedHtml, hItem.id);
@@ -934,21 +961,36 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         } catch {}
       }
 
-      // Explicitly remark repaired/reported bug articles as unread so user sees them refreshed in Unread queue
-      sqlite
-        .prepare(
-          `UPDATE feed_items 
-           SET is_read = 0 
-           WHERE (
-             title LIKE '%Hospital gave very sick doctor%'
-             OR title LIKE '%Owning a satellite isn%'
-             OR title LIKE '%Linus Torvalds sees signs AI-prompted%'
-             OR title LIKE '%Microsoft takes three decades%'
-             OR title LIKE '%AI echo chambers and sanity in tech leadership%'
-             OR title LIKE '%The Luxury of Children%'
-           )`
-        )
-        .run();
+      // Automatically reconcile and purge any duplicate rows in feed_items within the same feed
+      // preserving read status (if any duplicate was marked read, keep is_read = 1)
+      try {
+        const duplicates = sqlite
+          .prepare(
+            `SELECT feed_id, title, count(*) as count
+             FROM feed_items
+             GROUP BY feed_id, lower(trim(title))
+             HAVING count > 1`
+          )
+          .all() as Array<{ feed_id: string; title: string; count: number }>;
+
+        for (const dup of duplicates) {
+          const matching = sqlite
+            .prepare(
+              `SELECT id, is_read, created_at
+               FROM feed_items
+               WHERE feed_id = ? AND lower(trim(title)) = lower(trim(?))
+               ORDER BY is_read DESC, created_at ASC`
+            )
+            .all(dup.feed_id, dup.title) as Array<{ id: string; is_read: number; created_at: number }>;
+
+          if (matching.length > 1) {
+            const toDelete = matching.slice(1);
+            for (const del of toDelete) {
+              sqlite.prepare(`DELETE FROM feed_items WHERE id = ?`).run(del.id);
+            }
+          }
+        }
+      } catch {}
     } catch {}
   } catch {
     // ignore

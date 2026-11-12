@@ -18,10 +18,18 @@ export function cleanUrl(rawUrl: string): string {
       "affiliate",
       "_hsenc",
       "_hsmi",
+      "r",
+      "publication_id",
+      "post_id",
     ];
 
     for (const param of trackingParams) {
       url.searchParams.delete(param);
+    }
+
+    // Normalize path by removing trailing slash (unless path is just '/')
+    if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
     }
 
     return url.toString();

@@ -429,7 +429,7 @@ export function ReaderView({
           });
         }
       } else {
-        setHydrateError(data.error || "Could not extract full content from this URL");
+        setHydrateError(data.details || data.error || "Could not extract full content from this URL");
       }
     } catch (err: any) {
       console.error("Hydration failed", err);

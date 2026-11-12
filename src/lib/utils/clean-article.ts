@@ -215,13 +215,13 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     "\n"
   );
 
-  // 4e-2. Strip The Register leading "READ MORE" related story section
+  // 4e-2. Strip The Register & publisher "READ MORE" related story sections (headings, bold, lists, and links)
   md = md.replace(
-    /(?:^|\n)#{1,6}\s*READ MORE\b[\s\S]*?(?=\n\n(?:[A-Z0-9#]|!\[)|$)/gi,
+    /(?:^|\n)(?:#{1,6}\s*|\*{1,2}\s*)?READ MORE:?\s*(?:\*{1,2})?\s*\n+(?:[*+-]\s+(?:#{1,6}\s+)?\[?[^\n]+\]?(?:\([^\)]+\))?[^\n]*(?:\n|$))+/gi,
     "\n\n"
   );
   md = md.replace(
-    /(?:^|\n)#{1,6}\s*READ MORE\b\s*(?:\n+[*+-]\s+(?:#{1,6}\s+)?\[?[^\n]+\]?(?:\([^\)]+\))?[^\n]*)+/gi,
+    /(?:^|\n)(?:#{1,6}\s*|\*{1,2}\s*)?READ MORE:?\s*(?:\*{1,2})?\s*[\s\S]*?(?=\n\n(?:[A-Z][a-z0-9]|#|!\[)|$)/gi,
     "\n\n"
   );
 
@@ -308,21 +308,33 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     ""
   );
 
-  // 4i. Strip Foreign Affairs & Carnegie issue date stamps, author credentials, photo credits, and "More by [Author]" lists
+  // 4i. Strip Foreign Affairs & publication issue dates, author credentials, audio toolbars, photo credits, and "More by [Author]" lists
   md = md.replace(
-    /^(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\/[A-Za-z]+\s+\d{4}\s+)?Published on\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*\n+/gim,
-    ""
+    /(?:^|\n)(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(?:\/|\s*-\s*)\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)?\s+\d{4}\s+)?Published on\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*(?:\n|$)/gi,
+    "\n"
   );
   md = md.replace(
-    /^(?:By\s+)?\[?[A-Za-z\s\.-]+\]?\((?:https?:\/\/[^\)]*\/authors?\/[^\)]*|\/authors?\/[^\)]*)\)\s*\n*/gim,
+    /(?:^|\n)(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(?:\/|\s*-\s*)\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)?\s+\d{4}\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)(?:By\s+)?\[?[\p{L}][\p{L}\.\- \t]*\]?(?:\((?:https?:\/\/[^\)]*\/authors?\/[^\)]*|\/authors?\/[^\)]*)\))?\s*(?:\n+[ \t]*(?:Share|Save|Print|Download|Listen|Audio|Pocket|\d+\s*min read|\d+\s*Comments?)[^\n]*)+/giu,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*(?:Audio:\s*)?(?:Listen to (?:this )?article|Listen)\s*(?:\d+\s*min(?:\s*read)?)?\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /(?:^|\n)\s*(?:Share|Save|Print|Download|Listen|Pocket|Copy link)(?:\s*(?:\||\/)\s*(?:Share|Save|Print|Download|Listen|Pocket|Copy link))*\s*(?:\n|$)/gi,
+    "\n"
+  );
+  md = md.replace(
+    /^(?:By\s+)?\[?[\p{L}\s\.-]+\]?\((?:https?:\/\/[^\)]*\/authors?\/[^\)]*|\/authors?\/[^\)]*)\)\s*\n*/gimu,
     ""
   );
   md = md.replace(
     /^(?:\[?\d+\s*Comments?\]?(?:\([^\)]*\))?|\d+\s*Comments?)\s*\n*/gim,
-    ""
-  );
-  md = md.replace(
-    /^(?:Share|Save|Print|Download|Listen|Pocket)(?:\s*\|\s*(?:Share|Save|Print|Download|Listen|Pocket))+\s*\n*/gim,
     ""
   );
   md = md.replace(
@@ -334,7 +346,7 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
     "\n"
   );
   md = md.replace(
-    /(?:^|\n)[A-Z\s]{3,}\s+is\s+(?:a|an)\s+[^\n]+?(?:Carnegie Endowment|Council on Foreign Relations|Brookings|Center for Strategic and International Studies|National Security Council|Central Intelligence Agency|Senior Fellow|Director)[^\n]*(?:\n|$)/gi,
+    /(?:^|\n)[\p{L}][\p{L}\.\- \t]{2,}\s+is\s+(?:a|an|the|Professor|Senior Fellow|Fellow|Director|President|Chair|Dean|Scholar|Editor|Researcher|Consultant)[^\n]+?(?:Carnegie|Council|Brookings|Center|Institute|Endowment|University|College|School|National Security|Central Intelligence|Agency|Department|Fellow|Director|Professor)[^\n]*(?:\n|$)/giu,
     "\n"
   );
   md = md.replace(
@@ -1022,13 +1034,13 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     /<p>\s*<a[^>]*href=["'][^"']*google\.com\/preferences\/source\?q=theregister\.com["'][^>]*>Make us preferred on Google<\/a>\s*<\/p>/gi,
     ""
   );
-  // Strip The Register leading "READ MORE" related story list
+  // Strip The Register & publisher leading "READ MORE" related story lists (ul/ol lists, paragraph links, or strong headers)
   html = html.replace(
-    /<h[1-6][^>]*>\s*READ MORE\s*<\/h[1-6]>\s*(?:<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>)/gi,
+    /(?:<h[1-6][^>]*>|<p>\s*<strong>)\s*READ MORE:?\s*(?:<\/h[1-6]>|<\/strong>\s*<\/p>)\s*(?:<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>|(?:<p>\s*<a[^>]*>[\s\S]*?<\/a>\s*<\/p>\s*)+)/gi,
     ""
   );
   html = html.replace(
-    /<p>\s*<strong>\s*READ MORE\s*<\/strong>\s*<\/p>\s*(?:<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>)/gi,
+    /<div[^>]*class=["'][^"']*(?:read-more|story_list|related-stories)[^"']*["'][\s\S]*?<\/div>/gi,
     ""
   );
 
@@ -1097,9 +1109,29 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     /<p>\s*(?:<em>)?\s*(?:Sponsored by|Presented by|This article is sponsored by|This post is brought to you by|A message from (?:our|the) sponsor:?)[\s\S]*?(?:<\/em>)?\s*<\/p>/gi,
     ""
   );
-  // Strip Foreign Affairs & publication front matter: author bylines, comments links, action bars, issue volume
+  // Strip Foreign Affairs & publication front matter: issue dates, author bylines, comments links, action bars, audio toolbars, issue volume
+  html = html.replace(
+    /<p>\s*(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(?:\/|\s*-\s*)\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)?\s+\d{4}\s+)?Published on\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*(?:\/|\s*-\s*)\s*(?:January|February|March|April|May|June|July|August|September|October|November|December)?\s+\d{4}\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:By\s+)?(?:<a[^>]*href=["'][^"']*\/(?:author|authors|people|profile|contributor)\/[^"']*["'][^>]*>[^<]*<\/a>|[\p{L}][\p{L}\.\- \t]*)\s*<\/p>(?:\s*<p>\s*(?:Share|Save|Print|Download|Listen|Audio|Pocket|\d+\s*min read|\d+\s*Comments?)[^<]*<\/p>)+/giu,
+    ""
+  );
   html = html.replace(
     /<p>\s*(?:By\s+)?<a[^>]*href=["'][^"']*\/(?:author|authors|people|profile|contributor)\/[^"']*["'][^>]*>[^<]*<\/a>\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:Audio:\s*)?(?:Listen to (?:this )?article|Listen)\s*(?:\d+\s*min(?:\s*read)?)?\s*<\/p>/gi,
+    ""
+  );
+  html = html.replace(
+    /<p>\s*(?:<a[^>]*>)?\s*(?:Share|Save|Print|Download|Listen|Pocket|Copy link)(?:\s*<\/a>)?(?:\s*(?:\||\/)\s*(?:<a[^>]*>)?\s*(?:Share|Save|Print|Download|Listen|Pocket|Copy link)(?:\s*<\/a>)?)*\s*<\/p>/gi,
     ""
   );
   html = html.replace(

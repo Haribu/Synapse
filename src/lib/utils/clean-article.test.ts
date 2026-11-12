@@ -504,4 +504,71 @@ Tech leaders often find themselves trapped in echo chambers of their own making.
     expect(cleanedHtml).not.toContain("Author headshot");
     expect(cleanedHtml).toContain("Tech leaders often find themselves trapped in echo chambers");
   });
+
+  it("strips Foreign Affairs issue dates, author bylines, audio toolbars, and action rows (Bug 12/11/2026 - The Luxury of Children)", () => {
+    const rawMd = `November/December 2024
+Published on October 22, 2024
+
+Jesús Fernández-Villaverde
+
+Audio: Listen to this article 14 min read
+
+Share | Save | Print | Download
+
+Children have transitioned from economic necessities into luxury goods in modern societies.
+
+JESÚS FERNÁNDEZ-VILLAVERDE is Professor of Economics at the University of Pennsylvania.`;
+
+    const rawHtml = `<div>
+<p>November/December 2024</p>
+<p>Published on October 22, 2024</p>
+<p>Jesús Fernández-Villaverde</p>
+<p>Audio: Listen to this article 14 min read</p>
+<p><a href="#">Share</a> | <a href="#">Save</a> | <a href="#">Print</a></p>
+<p>Children have transitioned from economic necessities into luxury goods in modern societies.</p>
+</div>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "The Luxury of Children");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "The Luxury of Children");
+
+    expect(cleanedMd).not.toContain("November/December 2024");
+    expect(cleanedMd).not.toContain("Published on October 22");
+    expect(cleanedMd).not.toContain("Jesús Fernández-Villaverde");
+    expect(cleanedMd).not.toContain("Audio: Listen");
+    expect(cleanedMd).not.toContain("Share | Save | Print");
+    expect(cleanedMd).not.toContain("Professor of Economics at the University of Pennsylvania");
+    expect(cleanedMd).toContain("Children have transitioned from economic necessities into luxury goods in modern societies.");
+
+    expect(cleanedHtml).not.toContain("November/December 2024");
+    expect(cleanedHtml).not.toContain("Published on October 22");
+    expect(cleanedHtml).not.toContain("Jesús Fernández-Villaverde");
+    expect(cleanedHtml).not.toContain("Audio: Listen");
+    expect(cleanedHtml).not.toContain("Share");
+    expect(cleanedHtml).toContain("Children have transitioned from economic necessities into luxury goods in modern societies.");
+  });
+
+  it("strips The Register bold/plain 'READ MORE' front matter with bulleted links (Bug 12/11/2026 - Sticky Keys)", () => {
+    const rawMd = `**READ MORE:**
+
+*   [Windows 11 update tweaks Sticky Keys shortcut behavior](https://www.theregister.com/2026/11/08/sticky_keys_turn_off/)
+*   [Microsoft addresses accessibility prompt complaints](https://www.theregister.com/2026/11/07/accessibility_complaints/)
+
+After nearly thirty years of complaints from furious PC gamers, Microsoft is finally fixing Sticky Keys.`;
+
+    const rawHtml = `<p><strong>READ MORE:</strong></p>
+<p><a href="https://www.theregister.com/2026/11/08/sticky_keys_turn_off/">Windows 11 update tweaks Sticky Keys shortcut behavior</a></p>
+<p><a href="https://www.theregister.com/2026/11/07/accessibility_complaints/">Microsoft addresses accessibility prompt complaints</a></p>
+<p>After nearly thirty years of complaints from furious PC gamers, Microsoft is finally fixing Sticky Keys.</p>`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "Microsoft takes three decades to make Sticky Keys less sticky");
+    const cleanedHtml = cleanArticleHtml(rawHtml, "Microsoft takes three decades to make Sticky Keys less sticky");
+
+    expect(cleanedMd).not.toContain("READ MORE");
+    expect(cleanedMd).not.toContain("Sticky Keys shortcut behavior");
+    expect(cleanedMd).toContain("After nearly thirty years of complaints from furious PC gamers");
+
+    expect(cleanedHtml).not.toContain("READ MORE");
+    expect(cleanedHtml).not.toContain("Sticky Keys shortcut behavior");
+    expect(cleanedHtml).toContain("After nearly thirty years of complaints from furious PC gamers");
+  });
 });
