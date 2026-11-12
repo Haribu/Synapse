@@ -775,6 +775,11 @@ export async function rehydrateAndCleanTargetedSources(options?: {
       .run();
     sqlite
       .prepare(
+        `UPDATE feeds SET is_muted = 1, error_count = 0, last_error = NULL WHERE feed_url LIKE '%mdsec.co.uk%' OR title = 'MDSec'`
+      )
+      .run();
+    sqlite
+      .prepare(
         `DELETE FROM feed_items WHERE title LIKE '%True Tiger%' OR title LIKE '%Scandalous on Road%'`
       )
       .run();

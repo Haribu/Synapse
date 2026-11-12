@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.6] - 2026-11-12
+
+### Fixed
+- **Unreachable Feed Auto-Healing & Muting (`src/lib/services/sync-engine.ts`, `src/lib/db/reconcile.ts`):**
+  - Auto-healed permanently unreachable Cloudflare-blocked feed (`MDSec` / `https://www.mdsec.co.uk/feed/`) during maintenance sweeps by setting `is_muted = 1`, resetting `error_count = 0`, and clearing `last_error = NULL`.
+  - Prevents worker thread connection timeouts (15s–20s) and error escalation during scheduled background sync cycles and manual feed checks while preserving all historical stored articles.
+
 ## [1.4.5] - 2026-11-11
 
 ### Added

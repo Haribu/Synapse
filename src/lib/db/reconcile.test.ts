@@ -184,7 +184,7 @@ describe("reconcileUserData", () => {
   });
 
   it("auto-heals known legacy and broken feed URLs and titles", () => {
-    db.exec(`CREATE TABLE feeds (id TEXT PRIMARY KEY, title TEXT, feed_url TEXT);`);
+    db.exec(`CREATE TABLE feeds (id TEXT PRIMARY KEY, title TEXT, feed_url TEXT, is_muted INTEGER, error_count INTEGER, last_error TEXT);`);
     db.prepare(`INSERT INTO feeds (id, title, feed_url) VALUES (?, ?, ?)`).run(
       "f-schneier",
       "Schneier on Security",
@@ -200,6 +200,13 @@ describe("reconcileUserData", () => {
       "Graham Cluley",
       "http://feeds.feedburner.com/feed"
     );
+    db.prepare(`INSERT INTO feeds (id, title, feed_url, error_count, last_error) VALUES (?, ?, ?, ?, ?)`).run(
+      "f-mdsec",
+      "MDSec",
+      "https://www.mdsec.co.uk/feed/",
+      488,
+      "Timeout"
+    );
 
     reconcileUserData(db as any);
 
@@ -211,6 +218,11 @@ describe("reconcileUserData", () => {
 
     const f3 = db.prepare(`SELECT feed_url FROM feeds WHERE id = ?`).get("f-cluley") as any;
     expect(f3.feed_url).toBe("https://grahamcluley.com/feed/");
+
+    const f4 = db.prepare(`SELECT is_muted, error_count, last_error FROM feeds WHERE id = ?`).get("f-mdsec") as any;
+    expect(f4.is_muted).toBe(1);
+    expect(f4.error_count).toBe(0);
+    expect(f4.last_error).toBeNull();
   });
 
   it("handles environment variable floor overrides cleanly", () => {

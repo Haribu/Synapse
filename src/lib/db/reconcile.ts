@@ -46,6 +46,11 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
         sqlite.prepare("UPDATE feeds SET feed_url = ? WHERE feed_url = ?").run(newUrl, oldUrl);
       }
       sqlite.prepare("UPDATE feeds SET title = 'Risk and Cyber' WHERE title = 'Risk and Cyber '").run();
+      sqlite
+        .prepare(
+          "UPDATE feeds SET is_muted = 1, error_count = 0, last_error = NULL WHERE feed_url LIKE '%mdsec.co.uk%' OR title = 'MDSec'"
+        )
+        .run();
     }
 
     // 1. Reading List: Items explicitly imported as read-later or feedly-import should have is_starred = 1
