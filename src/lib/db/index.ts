@@ -329,11 +329,12 @@ try {
 // Clean up synthetic welcome feed & internal welcome article so phantom "General" category is removed
 try {
   sqlite.exec(`
-    DELETE FROM reading_list WHERE item_id = 'welcome-guide';
+    DELETE FROM reading_list WHERE id = 'welcome-guide';
     DELETE FROM reading_sessions WHERE target_id = 'welcome-guide' OR feed_id = 'synapse-welcome';
     DELETE FROM board_items WHERE target_id = 'welcome-guide';
     DELETE FROM feed_items WHERE id = 'welcome-guide' OR feed_id = 'synapse-welcome';
     DELETE FROM feeds WHERE id = 'synapse-welcome' OR feed_url LIKE '%synapse.local%';
+    UPDATE feeds SET is_muted = 1, error_count = 0, last_error = NULL WHERE feed_url LIKE '%mdsec.co.uk%' OR title = 'MDSec';
   `);
 } catch (e) {
   console.warn("Welcome guide cleanup skipped:", e);

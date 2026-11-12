@@ -141,6 +141,27 @@ export async function syncSingleFeed(feedId: string): Promise<SyncFeedResult> {
     feed.title = "Risk and Cyber";
   }
 
+  // Auto-heal and mute unreachable feeds that blackhole connections
+  if (feed.feedUrl.includes("mdsec.co.uk") || feed.title === "MDSec") {
+    db.update(feeds)
+      .set({
+        isMuted: true,
+        errorCount: 0,
+        lastError: null,
+      })
+      .where(eq(feeds.id, feedId))
+      .run();
+    feed.isMuted = true;
+    return {
+      feedId,
+      title: feed.title,
+      healthy: true,
+      status: "not_modified",
+      newItemsCount: 0,
+      durationMs: Date.now() - startTime,
+    };
+  }
+
   // Auto-heal poisoned YouTube feeds: restore channel_id=UC or playlist_id=UU back to UULF...
   if (feed.feedUrl.includes("youtube.com") && !feed.feedUrl.includes("playlist_id=UULF")) {
     try {
@@ -752,7 +773,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
   // Purge synthetic welcome feed and phantom General category during maintenance sweep
   try {
     sqlite.exec(`
-      DELETE FROM reading_list WHERE item_id = 'welcome-guide';
+      DELETE FROM reading_list WHERE id = 'welcome-guide';
       DELETE FROM reading_sessions WHERE target_id = 'welcome-guide' OR feed_id = 'synapse-welcome';
       DELETE FROM board_items WHERE target_id = 'welcome-guide';
       DELETE FROM feed_items WHERE id = 'welcome-guide' OR feed_id = 'synapse-welcome';

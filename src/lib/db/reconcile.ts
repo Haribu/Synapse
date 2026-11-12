@@ -43,14 +43,26 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
         "http://danwang.co/feed/": "https://danwang.co/feed/",
       };
       for (const [oldUrl, newUrl] of Object.entries(feedUrlFixes)) {
-        sqlite.prepare("UPDATE feeds SET feed_url = ? WHERE feed_url = ?").run(newUrl, oldUrl);
+        try {
+          const targetExists = sqlite.prepare("SELECT id FROM feeds WHERE feed_url = ?").get(newUrl) as { id: string } | undefined;
+          if (targetExists) {
+            sqlite.prepare("UPDATE feed_items SET feed_id = ? WHERE feed_id = (SELECT id FROM feeds WHERE feed_url = ?)").run(targetExists.id, oldUrl);
+            sqlite.prepare("DELETE FROM feeds WHERE feed_url = ?").run(oldUrl);
+          } else {
+            sqlite.prepare("UPDATE feeds SET feed_url = ? WHERE feed_url = ?").run(newUrl, oldUrl);
+          }
+        } catch {}
       }
-      sqlite.prepare("UPDATE feeds SET title = 'Risk and Cyber' WHERE title = 'Risk and Cyber '").run();
-      sqlite
-        .prepare(
-          "UPDATE feeds SET is_muted = 1, error_count = 0, last_error = NULL WHERE feed_url LIKE '%mdsec.co.uk%' OR title = 'MDSec'"
-        )
-        .run();
+      try {
+        sqlite.prepare("UPDATE feeds SET title = 'Risk and Cyber' WHERE title = 'Risk and Cyber '").run();
+      } catch {}
+      try {
+        sqlite
+          .prepare(
+            "UPDATE feeds SET is_muted = 1, error_count = 0, last_error = NULL WHERE feed_url LIKE '%mdsec.co.uk%' OR title = 'MDSec'"
+          )
+          .run();
+      } catch {}
     }
 
     // 1. Reading List: Items explicitly imported as read-later or feedly-import should have is_starred = 1

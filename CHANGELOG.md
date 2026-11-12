@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.7] - 2026-11-12
+
+### Fixed
+- **Reconciliation & Maintenance Sweep SQL Exception Fixes (`src/lib/db/index.ts`, `src/lib/db/reconcile.ts`, `src/lib/services/sync-engine.ts`):**
+  - Corrected `reading_list` cleanup queries across `db/index.ts` and `sync-engine.ts` from `WHERE item_id = 'welcome-guide'` to `WHERE id = 'welcome-guide'`, resolving unhandled `SqliteError: no such column: item_id` that prematurely aborted startup sweeps.
+  - Wrapped `feedUrlFixes` updates in `reconcile.ts` with target-existence checks and item re-linking to prevent `SQLITE_CONSTRAINT_UNIQUE` collisions from halting feed reconciliation.
+  - Hardened `syncSingleFeed` to auto-mute and zero error counts for unreachable feeds (`mdsec.co.uk`) immediately upon execution, ensuring manual "Check Feed" clicks in the UI never trigger 15-second timeouts.
+
 ## [1.4.6] - 2026-11-12
 
 ### Fixed
