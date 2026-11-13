@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install -g npm@latest
 RUN --mount=type=cache,target=/root/.npm \
-    npm install --prefer-offline --no-audit
+    npm install --no-audit
 
 # Install bun for fast testing
 RUN npm install -g bun
