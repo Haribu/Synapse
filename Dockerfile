@@ -8,6 +8,7 @@ WORKDIR /app
 # Dependencies stage
 FROM base AS deps
 COPY package.json ./
+RUN npm install -g npm@latest
 RUN --mount=type=cache,target=/root/.npm \
     npm install --prefer-offline --no-audit
 
