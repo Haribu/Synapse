@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.9] - 2026-11-13
+
+### Security
+- **XSS Sanitization (`src/lib/utils/clean-article.ts`):** Added `isomorphic-dompurify` allowlist sanitization to `cleanArticleHtml` before rendering in `ReaderView`.
+- **SSRF Redirect & DNS Rebinding Guards (`src/lib/utils/ssrf.ts`, `src/lib/services/obsidian-sync.ts`):** Added `safeFetch` with manual redirect validation (5-hop cap) and `dns.lookup` private-IP rejection, and capped remote image downloads at 15 MB.
+- **Middleware Loopback & FTS5 Hardening (`src/middleware.ts`, `src/app/api/items/route.ts`):** Gated `isLocalLoopback` on `AUTH_MODE=none` or `TRUST_LOCALHOST=true`, and quoted FTS5 search terms so operators are treated literally.
+
 ## [1.4.8] - 2026-11-12
 
 ### Fixed
