@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SSRF Redirect & DNS Rebinding Guards (`src/lib/utils/ssrf.ts`, `src/lib/services/obsidian-sync.ts`):** Added `safeFetch` with manual redirect validation (5-hop cap) and `dns.lookup` private-IP rejection, and capped remote image downloads at 15 MB.
 - **Middleware Loopback & FTS5 Hardening (`src/middleware.ts`, `src/app/api/items/route.ts`):** Gated `isLocalLoopback` on `AUTH_MODE=none` or `TRUST_LOCALHOST=true`, and quoted FTS5 search terms so operators are treated literally.
 
+### Fixed
+- **Server Crash Loop from Bundled `jsdom` Worker (`next.config.ts`):** Externalized `isomorphic-dompurify` and `jsdom` via `serverExternalPackages` so Next.js does not bundle `jsdom`'s sync-XHR worker `setTimeout(() => process.exit(0), 5000)` into the main server chunk.
+- **Docker Healthcheck Latency (`src/app/api/health/route.ts`):** Deferred `reconcileFeedbackWithObsidian()` via `setImmediate` and cached `hygiene` full-table `LIKE` scans and `verifyDataInvariants()` for 5 minutes.
+- **Docker Build Registry & Native Bindings (`Dockerfile`, `Dockerfile.test`):** Dropped `--prefer-offline` from `npm install` so fresh registry metadata is fetched while keeping Node 22's bundled `npm` for `better-sqlite3` native compilation and suppressing `npm` update notices.
+
+### Changed
+- **Dependencies (`bun.lock`):** Updated 15 semver-compatible packages (`next` `15.5.29`, `react`/`react-dom` `19.3.1`, `marked` `18.2.0`, `fast-xml-parser` `5.12.1`, `turndown` `7.2.5`, `@radix-ui/*`, `autoprefixer`, `postcss`, `prettier`).
+
 ## [1.4.8] - 2026-11-12
 
 ### Fixed
