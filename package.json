@@ -56,6 +56,7 @@
     "drizzle-orm": "^0.39.3",
     "fast-xml-parser": "^5.0.8",
     "googleapis": "^144.0.0",
+    "isomorphic-dompurify": "^4.7.0",
     "jsdom": "^26.0.0",
     "lucide-react": "^0.475.0",
     "marked": "^18.0.14",

@@ -20,8 +20,16 @@ export async function GET(req: Request) {
     const offset = parseInt(searchParams.get("offset") || "0", 10);
 
     if (search && search.trim().length > 0) {
-      // Use SQLite FTS5 search
-      const sanitized = search.replace(/["*]/g, "");
+      // Use SQLite FTS5 search — quote each term so FTS5 operators (OR/AND/NOT/NEAR/:/-) are treated literally
+      const terms = search
+        .replace(/["*]/g, " ")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((t) => `"${t}"*`);
+      if (terms.length === 0) {
+        return NextResponse.json({ items: [] });
+      }
       const ftsResults = sqlite
         .prepare(
           `
@@ -31,7 +39,7 @@ export async function GET(req: Request) {
           LIMIT ? OFFSET ?
         `
         )
-        .all(`${sanitized}*`, limit, offset) as { item_id: string }[];
+        .all(terms.join(" "), limit, offset) as { item_id: string }[];
 
       const itemIds = ftsResults.map((r) => r.item_id);
       if (itemIds.length === 0) {

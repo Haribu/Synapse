@@ -1,9 +1,39 @@
+import dns from "node:dns/promises";
+
 /**
  * SSRF and Network Security Guard
  * Prevents server-side request forgery to local/private network ranges (RFC 1918),
  * Docker bridge subnets (172.16.0.0/12), carrier-grade NAT (100.64.0.0/10),
  * cloud metadata endpoints (169.254.169.254), IPv6 loopback/unique-local, and non-HTTP protocols.
  */
+export function isPrivateOrReservedIp(ip: string): boolean {
+  const clean = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    clean === "::1" ||
+    clean === "::" ||
+    clean === "0:0:0:0:0:0:0:1" ||
+    clean === "0:0:0:0:0:0:0:0" ||
+    clean.startsWith("fe80:") ||
+    clean.startsWith("fc00:") ||
+    clean.startsWith("fd") ||
+    clean.startsWith("::ffff:")
+  ) {
+    return true;
+  }
+  if (
+    clean === "0.0.0.0" ||
+    clean.startsWith("0.") ||
+    clean.startsWith("127.") ||
+    clean.startsWith("10.") ||
+    clean.startsWith("192.168.") ||
+    clean.startsWith("169.254.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(clean) ||
+    /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(clean)
+  ) {
+    return true;
+  }
+  return false;
+}
 export function validateSafeUrl(targetUrl: string): URL {
   let parsed: URL;
   try {
@@ -66,4 +96,69 @@ export function validateSafeUrl(targetUrl: string): URL {
   }
 
   return parsed;
+}
+
+/**
+ * Resolves DNS for a validated URL and ensures no resolved IP is private/reserved.
+ */
+export async function validateSafeUrlWithDns(targetUrl: string): Promise<URL> {
+  const parsed = validateSafeUrl(targetUrl);
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+
+  // Skip DNS lookup if hostname is already an IP literal
+  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) {
+    return parsed;
+  }
+
+  try {
+    const records = await dns.lookup(hostname, { all: true });
+    for (const record of records) {
+      if (isPrivateOrReservedIp(record.address)) {
+        throw new Error(`DNS resolution for ${hostname} pointed to a blocked private IP.`);
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("blocked private IP")) {
+      throw err;
+    }
+    // If DNS fails, let fetch handle the network error naturally
+  }
+
+  return parsed;
+}
+
+/**
+ * SSRF-hardened fetch wrapper that validates DNS and manually follows redirects,
+ * re-validating every Location hop against validateSafeUrlWithDns.
+ */
+export async function safeFetch(
+  targetUrl: string,
+  init: RequestInit = {},
+  maxRedirects = 5
+): Promise<Response> {
+  let currentUrl = targetUrl;
+
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    const safeUrl = await validateSafeUrlWithDns(currentUrl);
+    const res = await fetch(safeUrl.toString(), {
+      ...init,
+      redirect: "manual",
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) {
+        return res;
+      }
+      if (hop === maxRedirects) {
+        throw new Error(`Too many redirects (>${maxRedirects}) while fetching ${targetUrl}`);
+      }
+      currentUrl = new URL(location, safeUrl).toString();
+      continue;
+    }
+
+    return res;
+  }
+
+  throw new Error(`Redirect loop exceeded for ${targetUrl}`);
 }

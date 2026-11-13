@@ -97,7 +97,7 @@ describe("cleanArticleHtml - Cross-Site Scripting (XSS) & Active Content Sanitiz
     const cleaned = cleanArticleHtml(input);
 
     expect(cleaned).toContain('<div class="relative"><iframe');
-    expect(cleaned).toContain('src="https://www.youtube.com/embed/uJqaGLmZpGo?start=0&wmode=transparent"');
+    expect(cleaned).toContain('src="https://www.youtube.com/embed/uJqaGLmZpGo?start=0&amp;wmode=transparent"');
     expect(cleaned).toContain('referrerpolicy="strict-origin-when-cross-origin"></iframe>');
     expect(cleaned).not.toContain('> referrerpolicy=');
     expect(cleaned).not.toContain('"> referrerpolicy=');

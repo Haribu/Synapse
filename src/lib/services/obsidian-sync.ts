@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import TurndownService from "turndown";
 import { cleanAuthor, cleanArticleMarkdown } from "@/lib/utils/clean-article";
-import { validateSafeUrl } from "@/lib/utils/ssrf";
+import { safeFetch } from "@/lib/utils/ssrf";
 
 export interface ObsidianNotePayload {
   title: string;
@@ -53,10 +53,11 @@ export function sanitizeFileName(name: string): string {
     .slice(0, 100);
 }
 
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB cap per image
+
 async function downloadImage(url: string, destPath: string): Promise<boolean> {
   try {
-    const safeUrl = validateSafeUrl(url);
-    const res = await fetch(safeUrl.toString(), {
+    const res = await safeFetch(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
@@ -65,7 +66,19 @@ async function downloadImage(url: string, destPath: string): Promise<boolean> {
       signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) return false;
+
+    const contentLength = Number(res.headers.get("content-length") || "0");
+    if (contentLength > MAX_IMAGE_BYTES) {
+      console.warn(`[ObsidianSync] Image exceeds 15MB limit (${contentLength} bytes): ${url}`);
+      return false;
+    }
+
     const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_IMAGE_BYTES) {
+      console.warn(`[ObsidianSync] Downloaded image exceeds 15MB limit (${arrayBuffer.byteLength} bytes): ${url}`);
+      return false;
+    }
+
     fs.writeFileSync(destPath, Buffer.from(arrayBuffer));
     return true;
   } catch (err) {

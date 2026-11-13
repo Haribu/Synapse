@@ -86,6 +86,7 @@ export async function middleware(request: NextRequest) {
 
   const isLocalLoopback =
     !hasProxyHeaders &&
+    (authMode === "none" || process.env.TRUST_LOCALHOST === "true") &&
     (host === "localhost" ||
       host.startsWith("localhost:") ||
       host === "127.0.0.1" ||

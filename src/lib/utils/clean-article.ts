@@ -1,4 +1,5 @@
 import { decodeHtmlEntities } from "./decode";
+import DOMPurify from "isomorphic-dompurify";
 
 /**
  * Detects blocks of CSV data (3+ consecutive lines with equal column counts >= 2)
@@ -1495,6 +1496,24 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
   html = html.replace(/<p>\s*All [Rr]ights [Rr]eserved\.?\s*<\/p>/gi, "");
   html = html.replace(/<p>\s*Foreign Affairs is published by [^<]+<\/p>/gi, "");
 
-  // 14. Decode remaining HTML entities in text safely
-  return html.trim();
+  // 14. Strict DOMPurify HTML sanitization (XSS defense)
+  return DOMPurify.sanitize(html.trim(), {
+    ALLOWED_TAGS: [
+      "p", "br", "b", "i", "strong", "em", "u", "s", "del", "ins", "mark",
+      "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li", "dl", "dt", "dd",
+      "blockquote", "pre", "code", "kbd", "samp", "hr",
+      "a", "img", "figure", "figcaption", "picture", "source",
+      "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
+      "div", "span", "section", "article", "details", "summary",
+      "sup", "sub", "abbr", "time", "iframe",
+    ],
+    ALLOWED_ATTR: [
+      "href", "target", "rel", "title", "alt", "src", "srcset", "sizes",
+      "width", "height", "class", "id", "loading", "decoding",
+      "colspan", "rowspan", "scope", "datetime", "open",
+      "referrerpolicy", "allow", "allowfullscreen", "frameborder",
+    ],
+    ALLOW_DATA_ATTR: false,
+  });
 }
