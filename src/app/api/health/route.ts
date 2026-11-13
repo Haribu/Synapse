@@ -8,6 +8,16 @@ import { createDatabaseBackup, verifyDataInvariants } from "@/lib/services/backu
 export const dynamic = "force-dynamic";
 
 let startupHygieneTriggeredForVersion: string | null = null;
+const HYGIENE_CACHE_TTL_MS = 5 * 60 * 1000;
+let cachedHealthMetrics: {
+  hygiene: {
+    referrerLeaks: number;
+    cssSnippetLeaks: number;
+    openFeedbackCount: number;
+  };
+  invariants: ReturnType<typeof verifyDataInvariants>;
+  cachedAt: number;
+} | null = null;
 
 export async function GET() {
   try {
@@ -23,9 +33,11 @@ export async function GET() {
     // Automatically reconcile Obsidian Feedback-Log.md with SQLite, create release snapshot, and trigger one-time in-place hygiene sweep per version
     if (startupHygieneTriggeredForVersion !== APP_VERSION) {
       startupHygieneTriggeredForVersion = APP_VERSION;
-      try {
-        reconcileFeedbackWithObsidian();
-      } catch {}
+      setImmediate(() => {
+        try {
+          reconcileFeedbackWithObsidian();
+        } catch {}
+      });
 
       try {
         const lastVerRow = sqlite
@@ -42,26 +54,33 @@ export async function GET() {
                   "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('last_hygiene_version', ?, CAST(strftime('%s', 'now') AS INTEGER))"
                 )
                 .run(APP_VERSION);
+              cachedHealthMetrics = null;
             })
             .catch(() => {});
         }
       } catch {}
     }
 
-    const hygiene = sqlite
-      .prepare(
-        `SELECT
-          (SELECT count(*) FROM feed_items WHERE full_content_html LIKE '%> referrerpolicy=%') AS referrerLeaks,
-          (SELECT count(*) FROM feed_items WHERE snippet LIKE '%{padding%' OR snippet LIKE '%.kadence-%') AS cssSnippetLeaks,
-          (SELECT count(*) FROM feedback WHERE status = 'open') AS openFeedbackCount`
-      )
-      .get() as {
-      referrerLeaks: number;
-      cssSnippetLeaks: number;
-      openFeedbackCount: number;
-    };
+    const now = Date.now();
+    if (!cachedHealthMetrics || now - cachedHealthMetrics.cachedAt > HYGIENE_CACHE_TTL_MS) {
+      const hygiene = sqlite
+        .prepare(
+          `SELECT
+            (SELECT count(*) FROM feed_items WHERE full_content_html LIKE '%> referrerpolicy=%') AS referrerLeaks,
+            (SELECT count(*) FROM feed_items WHERE snippet LIKE '%{padding%' OR snippet LIKE '%.kadence-%') AS cssSnippetLeaks,
+            (SELECT count(*) FROM feedback WHERE status = 'open') AS openFeedbackCount`
+        )
+        .get() as {
+        referrerLeaks: number;
+        cssSnippetLeaks: number;
+        openFeedbackCount: number;
+      };
 
-    const invariants = verifyDataInvariants(sqlite);
+      const invariants = verifyDataInvariants(sqlite);
+      cachedHealthMetrics = { hygiene, invariants, cachedAt: now };
+    }
+
+    const { hygiene, invariants } = cachedHealthMetrics;
 
     return NextResponse.json(
       {
