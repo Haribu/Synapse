@@ -8,7 +8,7 @@ WORKDIR /app
 # Dependencies stage
 FROM base AS deps
 COPY package.json ./
-RUN npm install -g npm@latest
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN --mount=type=cache,target=/root/.npm \
     npm install --no-audit
 
