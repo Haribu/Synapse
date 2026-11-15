@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
 
 export interface UndoAction {
@@ -18,6 +18,13 @@ interface UndoToastProps {
 
 export function UndoToast({ action, onClear }: UndoToastProps) {
   const [secondsRemaining, setSecondsRemaining] = useState<number>(5);
+  const actionRef = useRef<UndoAction | null>(action);
+  const onClearRef = useRef(onClear);
+
+  useEffect(() => {
+    actionRef.current = action;
+    onClearRef.current = onClear;
+  }, [action, onClear]);
 
   useEffect(() => {
     if (!action) return;
@@ -30,8 +37,8 @@ export function UndoToast({ action, onClear }: UndoToastProps) {
       setSecondsRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          action.onCommit();
-          onClear();
+          actionRef.current?.onCommit();
+          onClearRef.current();
           return 0;
         }
         return prev - 1;
@@ -39,7 +46,7 @@ export function UndoToast({ action, onClear }: UndoToastProps) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [action, onClear]);
+  }, [action?.id]);
 
   if (!action) return null;
 

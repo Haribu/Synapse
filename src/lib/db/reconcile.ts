@@ -27,6 +27,24 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
   };
 
   try {
+    // Track whether one-time historical seed/star restoration has already been completed on this database
+    let isStarredSeedCompleted = false;
+    try {
+      const hasSettings = sqlite
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'")
+        .get();
+      if (hasSettings) {
+        const row = sqlite
+          .prepare("SELECT value FROM settings WHERE key = 'reconcile_starred_seed_v1'")
+          .get() as { value: string } | undefined;
+        isStarredSeedCompleted = row?.value === "done";
+      } else {
+        sqlite.exec(
+          "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);"
+        );
+      }
+    } catch {}
+
     // 0. Auto-heal known legacy / broken feed URLs and titles
     const hasFeedsTable = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='feeds'")
@@ -65,20 +83,22 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
       } catch {}
     }
 
-    // 1. Reading List: Items explicitly imported as read-later or feedly-import should have is_starred = 1
-    // (Active Research Inbox saves from newsletters or direct URL additions keep is_starred = 0 so the queues never double-count)
-    const rlStarRes = sqlite
-      .prepare(
-        `UPDATE reading_list
-         SET is_starred = 1
-         WHERE (is_starred = 0 OR is_starred IS NULL)
-           AND (
-             tags LIKE '%read-later%'
-             OR tags LIKE '%feedly-import%'
-           )`
-      )
-      .run();
-    result.readingListStarred = rlStarRes.changes;
+    // 1. Reading List: Items explicitly imported as read-later or feedly-import should have is_starred = 1 on initial seed
+    // Once reconcile_starred_seed_v1 is marked done, never force-re-star items the user intentionally unstarred!
+    if (!isStarredSeedCompleted) {
+      const rlStarRes = sqlite
+        .prepare(
+          `UPDATE reading_list
+           SET is_starred = 1
+           WHERE (is_starred = 0 OR is_starred IS NULL)
+             AND (
+               tags LIKE '%read-later%'
+               OR tags LIKE '%feedly-import%'
+             )`
+        )
+        .run();
+      result.readingListStarred = rlStarRes.changes;
+    }
 
     // 1b. Un-star reading_list items that are actually Research Inbox saves (not feedly/read-later imports)
     sqlite
@@ -106,28 +126,42 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
       .run();
     result.readingListWork = rlWorkRes.changes;
 
-    // 3. Feed Items: Reconcile known starred text articles from user history and feedback
-    const knownStarredTitles = [
-      "The 15-Minute Patch, Reverse-Engineered: What Had to Be True?",
-      "Introducing ADE-Skills — Adversarial Detection Engineering Knowledge Base",
-      "I Spent Over 10 Hours Upgrading my Controllers",
-      "The dawn of the age of the exoskeleton",
-      "The dawn of the age of the\xa0exoskeleton",
-      "EP231: AI Terms You Need to Know",
-      "Building an evidence-grounded agentic security operations harness on Cloudflare",
-      "The CISO's Craft: Watchmaker or Gardener?",
-      "The CISO's Craft: Watchmaker or Gardener",
-      "Why LLMs Agree With You Even When You’re Wrong",
-      "Supporting the People Who Make Safe Operations Possible",
-    ];
+    // 3. Feed Items: Reconcile known starred text articles from user history and feedback (only on initial seed)
+    if (!isStarredSeedCompleted) {
+      const knownStarredTitles = [
+        "The 15-Minute Patch, Reverse-Engineered: What Had to Be True?",
+        "Introducing ADE-Skills — Adversarial Detection Engineering Knowledge Base",
+        "I Spent Over 10 Hours Upgrading my Controllers",
+        "The dawn of the age of the exoskeleton",
+        "The dawn of the age of the\xa0exoskeleton",
+        "EP231: AI Terms You Need to Know",
+        "Building an evidence-grounded agentic security operations harness on Cloudflare",
+        "Why LLMs Agree With You Even When You’re Wrong",
+        "Supporting the People Who Make Safe Operations Possible",
+      ];
 
-    const starStmt = sqlite.prepare(
-      `UPDATE feed_items SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR title LIKE ?)`
-    );
-    for (const title of knownStarredTitles) {
-      const res = starStmt.run(title, `%${title.slice(0, 30)}%`);
-      result.feedItemsStarred += res.changes;
+      const starStmt = sqlite.prepare(
+        `UPDATE feed_items SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR title LIKE ?)`
+      );
+      for (const title of knownStarredTitles) {
+        const res = starStmt.run(title, `%${title.slice(0, 30)}%`);
+        result.feedItemsStarred += res.changes;
+      }
     }
+
+    // 3b. Ensure "The CISO's Craft: Watchmaker or Gardener?" dropped by user from the backlog hunt stays unstarred
+    try {
+      sqlite
+        .prepare(
+          `UPDATE feed_items SET is_starred = 0 WHERE title LIKE '%Watchmaker or Gardener%'`
+        )
+        .run();
+      sqlite
+        .prepare(
+          `DELETE FROM reading_list WHERE title LIKE '%Watchmaker or Gardener%'`
+        )
+        .run();
+    } catch {}
 
     // 4. Feed Items: Reconcile known work articles
     const knownWorkTitles = [
@@ -211,20 +245,22 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
           // Attach seed database directly
           sqlite.exec(`ATTACH DATABASE '${seedPath}' AS seed_db;`);
 
-          // Update existing feed_items that were starred/work in seed_db
-          const mergeStarred = sqlite
-            .prepare(
-              `UPDATE feed_items
-               SET is_starred = 1
-               WHERE is_starred = 0
-                 AND (
-                   guid IN (SELECT guid FROM seed_db.feed_items WHERE is_starred = 1)
-                   OR url IN (SELECT url FROM seed_db.feed_items WHERE is_starred = 1)
-                   OR title IN (SELECT title FROM seed_db.feed_items WHERE is_starred = 1)
-                 )`
-            )
-            .run();
-          result.feedItemsStarred += mergeStarred.changes;
+          if (!isStarredSeedCompleted) {
+            // Update existing feed_items that were starred in seed_db (only on initial seed)
+            const mergeStarred = sqlite
+              .prepare(
+                `UPDATE feed_items
+                 SET is_starred = 1
+                 WHERE is_starred = 0
+                   AND (
+                     guid IN (SELECT guid FROM seed_db.feed_items WHERE is_starred = 1)
+                     OR url IN (SELECT url FROM seed_db.feed_items WHERE is_starred = 1)
+                     OR title IN (SELECT title FROM seed_db.feed_items WHERE is_starred = 1)
+                   )`
+              )
+              .run();
+            result.feedItemsStarred += mergeStarred.changes;
+          }
 
           const mergeWork = sqlite
             .prepare(
@@ -307,38 +343,50 @@ export function reconcileUserData(sqlite: Database.Database): ReconciliationResu
       }
     }
 
-    // 6. Obsidian Vault Reconciliation: check mounted vault for any exported articles
-    const vaultPaths = [
-      "/obsidian-vault/01 - Inbox/Synapse",
-      path.join(process.cwd(), "obsidian-vault", "01 - Inbox", "Synapse"),
-    ];
+    // 6. Obsidian Vault Reconciliation: check mounted vault for any exported articles (only on initial seed)
+    if (!isStarredSeedCompleted) {
+      const vaultPaths = [
+        "/obsidian-vault/01 - Inbox/Synapse",
+        path.join(process.cwd(), "obsidian-vault", "01 - Inbox", "Synapse"),
+      ];
 
-    for (const vaultDir of vaultPaths) {
-      if (fs.existsSync(vaultDir)) {
-        try {
-          const files = fs.readdirSync(vaultDir).filter((f) => f.endsWith(".md") && f !== "Feedback-Log.md");
-          for (const file of files) {
-            const content = fs.readFileSync(path.join(vaultDir, file), "utf8");
-            const titleMatch = content.match(/^title:\s*"([^"]+)"/m);
-            const sourceMatch = content.match(/^source:\s*"([^"]+)"/m);
-            const title = titleMatch ? titleMatch[1] : path.basename(file, ".md");
-            const source = sourceMatch ? sourceMatch[1] : null;
+      for (const vaultDir of vaultPaths) {
+        if (fs.existsSync(vaultDir)) {
+          try {
+            const files = fs.readdirSync(vaultDir).filter((f) => f.endsWith(".md") && f !== "Feedback-Log.md");
+            for (const file of files) {
+              const content = fs.readFileSync(path.join(vaultDir, file), "utf8");
+              const titleMatch = content.match(/^title:\s*"([^"]+)"/m);
+              const sourceMatch = content.match(/^source:\s*"([^"]+)"/m);
+              const title = titleMatch ? titleMatch[1] : path.basename(file, ".md");
+              const source = sourceMatch ? sourceMatch[1] : null;
 
-            if (title) {
-              const res1 = sqlite
-                .prepare(`UPDATE feed_items SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR url = ?)`)
-                .run(title, source);
-              const res2 = sqlite
-                .prepare(`UPDATE reading_list SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR url = ?)`)
-                .run(title, source);
-              result.obsidianReconciled += res1.changes + res2.changes;
+              if (title) {
+                const res1 = sqlite
+                  .prepare(`UPDATE feed_items SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR url = ?)`)
+                  .run(title, source);
+                const res2 = sqlite
+                  .prepare(`UPDATE reading_list SET is_starred = 1 WHERE is_starred = 0 AND (title = ? OR url = ?)`)
+                  .run(title, source);
+                result.obsidianReconciled += res1.changes + res2.changes;
+              }
             }
+          } catch (e) {
+            console.warn("[Reconcile] Obsidian vault sync skipped:", e);
           }
-        } catch (e) {
-          console.warn("[Reconcile] Obsidian vault sync skipped:", e);
         }
       }
     }
+
+    // Mark initial starred seed reconciliation as completed so user unstarring is permanently respected across restarts
+    try {
+      sqlite
+        .prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('reconcile_starred_seed_v1', 'done', CAST(strftime('%s', 'now') AS INTEGER))
+           ON CONFLICT(key) DO UPDATE SET value = 'done', updated_at = CAST(strftime('%s', 'now') AS INTEGER)`
+        )
+        .run();
+    } catch {}
 
     console.log(
       `[Reconcile] Completed: ${result.readingListStarred} RL starred, ${result.readingListWork} RL work, ${result.feedItemsStarred} feed starred, ${result.feedItemsWork} feed work, ${result.restoredFromSeed} restored from seed, ${result.obsidianReconciled} from Obsidian.`
@@ -369,7 +417,7 @@ export function getDefaultDataFloors() {
   return {
     feeds: parseFloor(process.env.DATA_FLOOR_FEEDS, 100),
     readingSessions: parseFloor(process.env.DATA_FLOOR_SESSIONS, 3000),
-    starred: parseFloor(process.env.DATA_FLOOR_STARRED, 150),
+    starred: parseFloor(process.env.DATA_FLOOR_STARRED, 20),
     work: parseFloor(process.env.DATA_FLOOR_WORK, 1),
   };
 }

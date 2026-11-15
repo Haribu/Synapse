@@ -2,15 +2,47 @@ import { decodeHtmlEntities } from "./decode";
 import DOMPurify from "isomorphic-dompurify";
 
 /**
- * Detects blocks of CSV data (3+ consecutive lines with equal column counts >= 2)
+ * Detects blocks of CSV data (3+ consecutive lines with equal column counts >= 3, or TSV >= 2)
  * and transforms them into clean GitHub-Flavored Markdown tables.
+ * Safely prevents converting normal prose sentences, bullet lists, headings, or Markdown links that contain commas.
  */
 export function convertCsvToMarkdownTable(text: string): string {
-  if (!text || !text.includes(",")) return text;
+  if (!text || (!text.includes(",") && !text.includes("\t"))) return text;
 
   const lines = text.split("\n");
   const result: string[] = [];
   let csvBuffer: string[][] = [];
+
+  const isLikelyCsvRow = (trimmed: string): { isCsv: boolean; cells: string[] } => {
+    if (
+      !trimmed ||
+      (!trimmed.includes(",") && !trimmed.includes("\t")) ||
+      trimmed.startsWith("|") ||
+      trimmed.startsWith("#") ||
+      trimmed.startsWith(">") ||
+      trimmed.startsWith("!") ||
+      trimmed.startsWith("[") ||
+      /^(?:[*+-]|\d+\.)\s+/.test(trimmed) ||
+      /\]\(https?:\/\//i.test(trimmed) ||
+      /<[a-z][\s\S]*>/i.test(trimmed)
+    ) {
+      return { isCsv: false, cells: [] };
+    }
+
+    const delimiter = trimmed.includes("\t") ? "\t" : ",";
+    const cells = trimmed.split(delimiter).map((c) => c.replace(/^["']|["']$/g, "").trim());
+
+    if (cells.length < 3 && delimiter === ",") {
+      return { isCsv: false, cells: [] };
+    }
+    if (cells.length < 2) {
+      return { isCsv: false, cells: [] };
+    }
+    if (cells.some((c) => c.length > 60 || /[.!?]$/.test(c))) {
+      return { isCsv: false, cells: [] };
+    }
+    return { isCsv: true, cells };
+  };
 
   const flushBuffer = () => {
     if (csvBuffer.length >= 3) {
@@ -33,24 +65,15 @@ export function convertCsvToMarkdownTable(text: string): string {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (
-      trimmed &&
-      (trimmed.includes(",") || trimmed.includes("\t")) &&
-      !trimmed.startsWith("|") &&
-      !trimmed.startsWith("#")
-    ) {
-      const delimiter = trimmed.includes("\t") ? "\t" : ",";
-      const cells = trimmed.split(delimiter).map((c) => c.replace(/^["']|["']$/g, "").trim());
-
-      if (cells.length >= 2) {
-        if (csvBuffer.length === 0) {
-          csvBuffer.push(cells);
-          continue;
-        } else if (Math.abs(cells.length - csvBuffer[0].length) <= 1) {
-          while (cells.length < csvBuffer[0].length) cells.push("");
-          csvBuffer.push(cells.slice(0, csvBuffer[0].length));
-          continue;
-        }
+    const check = isLikelyCsvRow(trimmed);
+    if (check.isCsv) {
+      const { cells } = check;
+      if (csvBuffer.length === 0) {
+        csvBuffer.push(cells);
+        continue;
+      } else if (cells.length === csvBuffer[0].length) {
+        csvBuffer.push(cells);
+        continue;
       }
     }
 
@@ -68,6 +91,59 @@ export function convertCsvToMarkdownTable(text: string): string {
 }
 
 /**
+ * Repairs markdown blocks that were previously corrupted by false-positive CSV-to-Table conversion
+ * (e.g., bullet lists or The Register READ MORE links split across table cells on commas).
+ */
+export function repairCorruptedMarkdownTables(markdown: string): string {
+  if (!markdown || !markdown.includes("|")) return markdown;
+
+  let text = markdown.replace(/(?:^|\n)\|\s*---\s*\|\s*\n\|\s*---\s*\|(?:\s*\n|$)/g, "\n");
+
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+      const block: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|") && lines[i].trim().endsWith("|")) {
+        block.push(lines[i]);
+        i++;
+      }
+
+      const isCorruptedProseOrBullets = block.some(
+        (row) =>
+          /\|\s*(?:[*+-]\s+|####\s+)/.test(row) ||
+          /\]\(https?:\/\/[^)]+\)\s*\|/.test(row) ||
+          block.every((r) => /^\|\s*---\s*\|$/.test(r.trim()))
+      );
+
+      if (isCorruptedProseOrBullets) {
+        for (const row of block) {
+          const inner = row.trim().replace(/^\|/, "").replace(/\|$/, "").trim();
+          if (/^(?:---\s*\|\s*)*---$/.test(inner)) continue;
+          const cells = inner
+            .split("|")
+            .map((c) => c.trim())
+            .filter((c) => c.length > 0);
+          if (cells.length > 0) {
+            out.push(cells.join(", "));
+          }
+        }
+      } else {
+        out.push(...block);
+      }
+    } else {
+      out.push(line);
+      i++;
+    }
+  }
+
+  return out.join("\n");
+}
+
+/**
  * Strips cookie banners, tracker consent dialogs, header navigation,
  * skip links, social share buttons, and tail recommendation boilerplate
  * from article markdown.
@@ -75,7 +151,7 @@ export function convertCsvToMarkdownTable(text: string): string {
 export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?: string): string {
   if (!rawMarkdown || typeof rawMarkdown !== "string") return "";
 
-  let md = convertCsvToMarkdownTable(rawMarkdown);
+  let md = convertCsvToMarkdownTable(repairCorruptedMarkdownTables(rawMarkdown));
 
   // 1. Strip Jina Reader header metadata lines
   md = md
@@ -223,6 +299,11 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(
     /(?:^|\n)(?:#{1,6}\s*|\*{1,2}\s*)?READ MORE:?\s*(?:\*{1,2})?\s*[\s\S]*?(?=\n\n(?:[A-Z][a-z0-9]|#|!\[)|$)/gi,
+    "\n\n"
+  );
+  // Strip standalone The Register related-story bullet clusters (`* #### [Headline Date](https://www.theregister.com/...)`) even when the READ MORE heading was already stripped
+  md = md.replace(
+    /(?:^|\n)(?:\s*[*+-]\s+(?:#{1,6}\s+)?\[[^\]]+\]\(https?:\/\/(?:www\.)?theregister\.com\/[^\)]+\)\s*(?:\n|$))+/gi,
     "\n\n"
   );
 
@@ -702,13 +783,22 @@ export function cleanArticleMarkdown(rawMarkdown?: string | null, expectedTitle?
   );
   md = md.replace(/(?:^|\n)Subscribe to get the latest posts sent to your email\.?\s*$/gim, "");
 
-  // 15k. Strip Foreign Affairs trailing recommendations & most read carousels
+  // 15k. Strip Foreign Affairs trailing recommendations, Topics & Regions, More by Author, & most read carousels
   md = md.replace(
     /(?:^|\n)#{1,6}\s*(?:Recommended|Most Read)[\s\S]*?(?=\n\n#{1,6}\s*(?:Recommended|Most Read)|\n*$)/gi,
     ""
   );
   md = md.replace(/(?:^|\n)#{1,6}\s*(?:Recommended|Most Read)[\s\S]*$/gi, "");
-  md = md.replace(/(?:^|\n)Topics\s*&\s*Regions:[\s\S]*?(?=\n\n#{1,6}|\n\n[A-Z]|\n*$)/gi, "");
+  md = md.replace(/(?:^|\n)\s*Topics\s*&\s*Regions:[\s\S]*$/gi, "");
+  md = md.replace(
+    /(?:^|\n)[*+-]\s+\[More by [^\]]+\]\(https?:\/\/(?:www\.)?foreignaffairs\.com\/authors\/[^\)]+\)\s*(?:\n|$)/gi,
+    "\n"
+  );
+  // Strip trailing Foreign Affairs promo card clusters (2+ consecutive ### [Title](foreignaffairs.com/...) + [Subtitle](...))
+  md = md.replace(
+    /(?:\n|^)(?:#{1,6}\s+\[[^\]]+\]\(https?:\/\/(?:www\.)?foreignaffairs\.com\/[^\)]+\)\s*\n+\[[^\]]+\]\(https?:\/\/(?:www\.)?foreignaffairs\.com\/[^\)]+\)(?:\s*\n+(?:and\s+)?\[[^\]]+\]\(https?:\/\/(?:www\.)?foreignaffairs\.com\/authors\/[^\)]+\))*\s*){2,}$/gi,
+    ""
+  );
 
   // 15l. Strip Dark Reading / Informa TechTarget trailing social links, related reading, author bio cards, and network footer
   md = md.replace(
@@ -1044,6 +1134,32 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     /<div[^>]*class=["'][^"']*(?:read-more|story_list|related-stories)[^"']*["'][\s\S]*?<\/div>/gi,
     ""
   );
+  // Strip HTML tables that were previously generated from corrupted Markdown bullet lists or The Register READ MORE links
+  html = html.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (tableHtml) => {
+    if (
+      /<(?:th|td)[^>]*>\s*(?:\*\s+|####\s+)/i.test(tableHtml) ||
+      /\]\(\s*<a\s+href=/i.test(tableHtml) ||
+      (tableHtml.includes("theregister.com/") && /####\s*\[/.test(tableHtml))
+    ) {
+      if (tableHtml.includes("theregister.com/") && /####\s*\[/.test(tableHtml)) {
+        return "";
+      }
+      // Reconstruct bullet list items from corrupted table rows
+      const rows = Array.from(tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi));
+      const bullets: string[] = [];
+      for (const r of rows) {
+        const cells = Array.from(r[1].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi))
+          .map((m) => m[1].trim())
+          .filter(Boolean);
+        if (cells.length > 0) {
+          const joined = cells.join(", ").replace(/^\*\s+/, "").trim();
+          if (joined) bullets.push(`<li>${joined}</li>`);
+        }
+      }
+      return bullets.length > 0 ? `<ul>${bullets.join("")}</ul>` : "";
+    }
+    return tableHtml;
+  });
 
   // 9c-3. Strip Dark Reading / Cyber portal bracketed or unbracketed author/read-time cards
   html = html.replace(
@@ -1232,6 +1348,10 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
     ""
   );
   html = html.replace(/<p>\s*More by [A-Za-z\s\.-]+<\/p>(?:\s*<p>[^<]+<\/p>){1,5}/gi, "");
+  html = html.replace(
+    /<ul>\s*<li>\s*<a[^>]*href=["']https?:\/\/(?:www\.)?foreignaffairs\.com\/authors\/[^"']*["'][^>]*>\s*More by [^<]+<\/a>\s*<\/li>\s*<\/ul>/gi,
+    ""
+  );
 
   // 9i-3. Strip BleepingComputer webinar sponsor boxes and hubs.li links
   html = html.replace(/<div[^>]*(?:webinar-box|sponsor-banner)[^>]*>[\s\S]*?<\/div>/gi, "");
@@ -1321,6 +1441,14 @@ export function cleanArticleHtml(rawHtml?: string | null, expectedTitle?: string
   );
   html = html.replace(
     /<div[^>]*>\s*<h[1-6][^>]*>\s*(?:Recommended|Most Read|Topics & Regions)\s*<\/h[1-6]>[\s\S]*?<\/div>/gi,
+    ""
+  );
+  html = html.replace(
+    /<\/article>\s*<div[^>]*>\s*<p>\s*Topics\s*&amp;\s*Regions:\s*<\/p>[\s\S]*$/gi,
+    "</article>"
+  );
+  html = html.replace(
+    /<div[^>]*>\s*<p>\s*Topics\s*&amp;\s*Regions:\s*<\/p>[\s\S]*?(?:<\/main>|$)/gi,
     ""
   );
 

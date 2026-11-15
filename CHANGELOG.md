@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.10] - 2026-11-15
+
+### Fixed
+- **Corrupted CSV Table False-Positive Prevention & Repair (`src/lib/utils/clean-article.ts`):**
+  - Tightened `convertCsvToMarkdownTable` so it never converts bullet lists, headings, Markdown links (`[...]`), or single-comma prose/date lines (`September 10, 2026`, `2,000`) into Markdown tables.
+  - Added `repairCorruptedMarkdownTables` and HTML `<table>` stripping to automatically un-table previously corrupted bullet lists and strip The Register `READ MORE` related-story blocks (e.g., *"United Airlines wants you to check in, not your chatbot"*).
+- **Persistent Star/Unstar State & One-Time Seed Gating (`src/lib/db/reconcile.ts`, `src/components/UndoToast.tsx`, `src/app/page.tsx`, `src/app/api/items/route.ts`, `src/app/api/reading-list/route.ts`):**
+  - Gated one-time seed star restoration in `reconcileUserData` behind persistent setting `reconcile_starred_seed_v1 = 'done'` so container restarts never re-star items the user intentionally unstarred.
+  - Removed *"The CISO's Craft: Watchmaker or Gardener?"* from `knownStarredTitles` and explicitly ensured it is unstarred and removed across `feed_items` and `reading_list`.
+  - Stabilized the 5-second `UndoToast` countdown timer using `useRef` so parent state updates do not reset or cancel the timer, and switched `commitToggleStar`, `handleDropBacklogCandidate`, `handleDeclareBankruptcy`, and `handleDeleteItem` to commit mutations immediately to the API while using `onUndo` to restore if clicked.
+  - Synchronized `PATCH /api/items`, `PATCH /api/reading-list`, and `DELETE /api/reading-list` across both `feed_items` and `reading_list` by ID, URL, and title.
+- **Complete Saved & Research Item Content Healing (`src/lib/services/sync-engine.ts`):**
+  - Enhanced `rehydrateAndCleanTargetedSources` to repair the 10 `feedly.newsletter.local` `reading_list` items that had swapped `title` and `source_context`, synthesize clean HTML from Markdown for items with empty Elementor layout wrappers, and populate full structured HTML and Markdown for all remaining unhydrated saved/research items (including *"The Luxury of Children"*) so 100% of saved items have complete content.
+- **Foreign Affairs Promo & Topic Bar Stripping (`src/lib/utils/clean-article.ts`):**
+  - Stripped Foreign Affairs `Topics & Regions:` blocks, `More by [Author]` links, trailing recommendation card blocks after `</article>`, and multi-card promo clusters in Markdown.
+
 ## [1.4.9] - 2026-11-13
 
 ### Security

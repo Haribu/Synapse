@@ -225,6 +225,47 @@ describe("reconcileUserData", () => {
     expect(f4.last_error).toBeNull();
   });
 
+  it("does not re-star items on subsequent runs after reconcile_starred_seed_v1 is marked done (Bug 15/11/2026)", () => {
+    db.prepare(
+      `INSERT INTO reading_list (id, url, title, tags, is_starred) VALUES (?, ?, ?, ?, ?)`
+    ).run("rl-import", "https://example.com/import", "Imported Read Later", "read-later,feedly-import", 0);
+
+    db.prepare(
+      `INSERT INTO feed_items (id, title, url, is_starred) VALUES (?, ?, ?, ?)`
+    ).run(
+      "fi-known",
+      "The 15-Minute Patch, Reverse-Engineered: What Had to Be True?",
+      "https://example.com/patch",
+      0
+    );
+
+    // First run: initial seed stars both items and sets reconcile_starred_seed_v1 = 'done'
+    reconcileUserData(db as any);
+    expect(
+      (db.prepare(`SELECT is_starred FROM reading_list WHERE id = 'rl-import'`).get() as any)
+        .is_starred
+    ).toBe(1);
+    expect(
+      (db.prepare(`SELECT is_starred FROM feed_items WHERE id = 'fi-known'`).get() as any)
+        .is_starred
+    ).toBe(1);
+
+    // User intentionally unstars both items
+    db.prepare(`UPDATE reading_list SET is_starred = 0 WHERE id = 'rl-import'`).run();
+    db.prepare(`UPDATE feed_items SET is_starred = 0 WHERE id = 'fi-known'`).run();
+
+    // Second run: reconcileUserData must NOT overwrite user's intentional unstar!
+    reconcileUserData(db as any);
+    expect(
+      (db.prepare(`SELECT is_starred FROM reading_list WHERE id = 'rl-import'`).get() as any)
+        .is_starred
+    ).toBe(0);
+    expect(
+      (db.prepare(`SELECT is_starred FROM feed_items WHERE id = 'fi-known'`).get() as any)
+        .is_starred
+    ).toBe(0);
+  });
+
   it("handles environment variable floor overrides cleanly", () => {
     const originalEnv = process.env.DATA_FLOOR_WORK;
     try {

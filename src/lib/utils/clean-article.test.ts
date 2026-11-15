@@ -571,4 +571,106 @@ After nearly thirty years of complaints from furious PC gamers, Microsoft is fin
     expect(cleanedHtml).not.toContain("Sticky Keys shortcut behavior");
     expect(cleanedHtml).toContain("After nearly thirty years of complaints from furious PC gamers");
   });
+
+  it("repairs and strips corrupted Markdown/HTML tables at the top of The Register articles (Bug 12/11/2026 - United Airlines)", () => {
+    const corruptedMd = `| *   #### [Ministers rejected NATS reimbursement plan before 2 | 000 UK flights were cancelled September 10 | 2026](https://www.theregister.com/public-sector/2026/09/10/ministers-rejected-nats-reimbursement-plan-before-2000-uk-flights-were-cancelled/5295529) |
+| --- | --- | --- |
+| *   #### [Amazon-branded plane in fatal accident at Miami Airport September 7 | 2026](https://www.theregister.com/on-prem/2026/09/07/amazon-branded-plane-in-fatal-accident-at-miami-airport/5294707) |  |
+| *   #### [Google buys crashed airline Spirit’s data at auction | because AI August 18 | 2026](https://www.theregister.com/ai-and-ml/2026/08/18/google-buys-crashed-airline-spirits-data-at-auction-because-ai/5288962) |
+
+United Airlines has become the latest company to slap restrictions on unauthorized third-party AI agents, warning that the bots could make unintended purchases.`;
+
+    const corruptedHtml = `<table>
+<thead>
+<tr>
+<th>*   #### [Ministers rejected NATS reimbursement plan before 2</th>
+<th>000 UK flights were cancelled September 10</th>
+<th>2026](<a href="https://www.theregister.com/public-sector/2026/09/10/ministers-rejected-nats-reimbursement-plan-before-2000-uk-flights-were-cancelled/5295529">https://www.theregister.com/public-sector/2026/09/10/ministers-rejected-nats-reimbursement-plan-before-2000-uk-flights-were-cancelled/5295529</a>)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>*   #### [Amazon-branded plane in fatal accident at Miami Airport September 7</td>
+<td>2026](<a href="https://www.theregister.com/on-prem/2026/09/07/amazon-branded-plane-in-fatal-accident-at-miami-airport/5294707">https://www.theregister.com/on-prem/2026/09/07/amazon-branded-plane-in-fatal-accident-at-miami-airport/5294707</a>)</td>
+<td></td>
+</tr></tbody></table>
+<p>United Airlines has become the latest company to slap restrictions on unauthorized third-party AI agents, warning that the bots could make unintended purchases.</p>`;
+
+    const cleanedMd = cleanArticleMarkdown(
+      corruptedMd,
+      "United Airlines wants you to check in, not your chatbot"
+    );
+    const cleanedHtml = cleanArticleHtml(
+      corruptedHtml,
+      "United Airlines wants you to check in, not your chatbot"
+    );
+
+    expect(cleanedMd).not.toContain("| --- |");
+    expect(cleanedMd).not.toContain("Ministers rejected NATS");
+    expect(cleanedMd).not.toContain("Amazon-branded plane");
+    expect(cleanedMd).toContain(
+      "United Airlines has become the latest company to slap restrictions on unauthorized third-party AI agents"
+    );
+
+    expect(cleanedHtml).not.toContain("<table");
+    expect(cleanedHtml).not.toContain("Ministers rejected NATS");
+    expect(cleanedHtml).toContain(
+      "United Airlines has become the latest company to slap restrictions on unauthorized third-party AI agents"
+    );
+  });
+
+  it("does not convert bulleted prose lists with commas into Markdown tables and repairs previously corrupted bullet tables", () => {
+    const bulletProse = `## Key takeaways
+
+*   Multiple federal agencies updated their joint CISA advisory, warning that attackers manipulated operator displays.
+*   The attackers scanned the internet for exposed PLCs, connected without authentication, and altered setpoints.
+*   Defenders should enforce network segmentation, require multi-factor authentication, and monitor ICS protocols.`;
+
+    const cleaned = cleanArticleMarkdown(bulletProse, "Federal Agencies Warn of Ongoing PLC Exploitation");
+    expect(cleaned).not.toContain("| --- |");
+    expect(cleaned).toContain("*   Multiple federal agencies updated their joint CISA advisory, warning that attackers manipulated operator displays.");
+
+    const previouslyCorruptedBullets = `## Key takeaways
+
+| *   Multiple federal agencies updated their joint CISA advisory | warning that attackers manipulated operator displays. |
+| --- | --- |
+| *   The attackers scanned the internet for exposed PLCs | connected without authentication. |`;
+
+    const repaired = cleanArticleMarkdown(previouslyCorruptedBullets, "Federal Agencies Warn of Ongoing PLC Exploitation");
+    expect(repaired).not.toContain("| --- |");
+    expect(repaired).toContain("*   Multiple federal agencies updated their joint CISA advisory, warning that attackers manipulated operator displays.");
+  });
+
+  it("strips Foreign Affairs Topics & Regions, More by Author, and trailing promo card blocks", () => {
+    const rawHtml = `<main id="content"><article><section><div><h2>Why the Baby Bust Is Making the World More Unequal</h2><p>Actual essay body paragraph about global fertility.</p><ul><li><a href="https://www.foreignaffairs.com/authors/jesus-fernandez-villaverde">More by Jesús Fernández-Villaverde</a></li></ul></div></section></article><div><p>Topics &amp; Regions:</p><ul><li><a href="https://www.foreignaffairs.com/regions/mexico">Mexico</a></li></ul></div><div><h3><a href="https://www.foreignaffairs.com/taiwan/recipe-disaster-taiwan-lissner-rapp-hooper">A Recipe for Disaster in Taiwan</a></h3><p><a href="https://www.foreignaffairs.com/taiwan/recipe-disaster-taiwan-lissner-rapp-hooper">Why the Risk of a Crisis Is Growing</a></p></div></main>`;
+
+    const cleanedHtml = cleanArticleHtml(rawHtml, "The Luxury of Children");
+    expect(cleanedHtml).toContain("Actual essay body paragraph about global fertility.");
+    expect(cleanedHtml).not.toContain("Topics &amp; Regions:");
+    expect(cleanedHtml).not.toContain("A Recipe for Disaster in Taiwan");
+    expect(cleanedHtml).not.toContain("More by Jesús Fernández-Villaverde");
+
+    const rawMd = `Actual essay body paragraph about global fertility.
+
+*   [More by Jesús Fernández-Villaverde](https://www.foreignaffairs.com/authors/jesus-fernandez-villaverde)
+
+Topics & Regions:
+*   [Mexico](https://www.foreignaffairs.com/regions/mexico)
+
+### [A Recipe for Disaster in Taiwan](https://www.foreignaffairs.com/taiwan/recipe-disaster-taiwan-lissner-rapp-hooper)
+
+[Why the Risk of a Crisis Is Growing](https://www.foreignaffairs.com/taiwan/recipe-disaster-taiwan-lissner-rapp-hooper)
+
+and [Mira Rapp-Hooper](https://www.foreignaffairs.com/authors/mira-rapp-hooper)
+
+### [China’s AI Diplomacy Is Working](https://www.foreignaffairs.com/china/chinas-ai-diplomacy-working)
+
+[And America Should Be Taking Notes](https://www.foreignaffairs.com/china/chinas-ai-diplomacy-working)`;
+
+    const cleanedMd = cleanArticleMarkdown(rawMd, "The Luxury of Children");
+    expect(cleanedMd).toContain("Actual essay body paragraph about global fertility.");
+    expect(cleanedMd).not.toContain("Topics & Regions:");
+    expect(cleanedMd).not.toContain("A Recipe for Disaster in Taiwan");
+    expect(cleanedMd).not.toContain("China’s AI Diplomacy Is Working");
+    expect(cleanedMd).not.toContain("More by Jesús Fernández-Villaverde");
+  });
 });

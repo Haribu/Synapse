@@ -247,7 +247,24 @@ export async function PATCH(req: Request) {
       updates.tags = Array.isArray(tags) ? tags.join(",") : tags;
     }
 
+    const targetRow = db.select().from(readingList).where(eq(readingList.id, id)).get();
     db.update(readingList).set(updates).where(eq(readingList.id, id)).run();
+
+    // Synchronize isStarred across feed_items and reading_list by URL/title
+    if (typeof isStarred === "boolean" && targetRow) {
+      if (targetRow.url) {
+        db.update(feedItems)
+          .set({ isStarred })
+          .where(eq(feedItems.url, targetRow.url))
+          .run();
+      }
+      if (targetRow.title) {
+        db.update(feedItems)
+          .set({ isStarred })
+          .where(eq(feedItems.title, targetRow.title))
+          .run();
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -264,7 +281,26 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
 
+    const targetRow = db.select().from(readingList).where(eq(readingList.id, id)).get();
     db.delete(readingList).where(eq(readingList.id, id)).run();
+
+    // Also unstar any matching feed_items so deleted reading_list items never resurface via Starred
+    if (targetRow) {
+      if (targetRow.url) {
+        db.update(feedItems)
+          .set({ isStarred: false })
+          .where(eq(feedItems.url, targetRow.url))
+          .run();
+      }
+      if (targetRow.title) {
+        db.update(feedItems)
+          .set({ isStarred: false })
+          .where(eq(feedItems.title, targetRow.title))
+          .run();
+      }
+    }
+    // Also unstar if id itself belongs to feed_items
+    db.update(feedItems).set({ isStarred: false }).where(eq(feedItems.id, id)).run();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

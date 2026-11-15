@@ -530,29 +530,27 @@ export default function HomePage() {
 
   const commitToggleStar = async (id: string, isStarred: boolean) => {
     try {
-      const targetItem = items.find((i) => i.id === id);
-      const isFromReadingList =
-        selectedView === "reading_list" || (targetItem && !targetItem.feedId);
+      const targetItem =
+        items.find((i) => i.id === id) ||
+        savedStarredItems.find((i) => i.id === id) ||
+        savedResearchItems.find((i) => i.id === id);
 
-      if (isFromReadingList) {
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          queueOfflineMutation("toggle_star", id, isStarred);
-        } else {
-          try {
-            const res = await fetch("/api/reading-list", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id, isStarred }),
-            });
-            if (!res.ok) queueOfflineMutation("toggle_star", id, isStarred);
-          } catch {
-            queueOfflineMutation("toggle_star", id, isStarred);
-          }
-        }
-      } else {
-        await patchItem(id, { isStarred });
+      // Update local state immediately so rapid view switches or multi-unstar clicks never show stale state
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id || (targetItem?.url && it.url === targetItem.url)
+            ? { ...it, isStarred }
+            : it
+        )
+      );
+      if (!isStarred) {
+        setSavedStarredItems((prev) =>
+          prev.filter((it) => it.id !== id && (!targetItem?.url || it.url !== targetItem.url))
+        );
       }
-      setItems((prev) => prev.map((it) => (it.id === id ? { ...it, isStarred } : it)));
+
+      // Always patch /api/items (which updates both feed_items and reading_list by ID, URL, and title)
+      await patchItem(id, { isStarred });
       refreshBacklogSummary();
     } catch (err) {
       console.error("Failed to toggle star", err);
@@ -697,78 +695,130 @@ export default function HomePage() {
   };
 
   const handleDropBacklogCandidate = async (candidate: BacklogCandidate) => {
+    const candidateUrl = candidate.url;
+
     if (candidate.sourceQueue === "research_inbox") {
-      setSavedResearchItems((prev) => prev.filter((it) => it.id !== candidate.id));
+      const removedResearch = savedResearchItems.find((it) => it.id === candidate.id);
+      setSavedResearchItems((prev) =>
+        prev.filter((it) => it.id !== candidate.id && (!candidateUrl || it.url !== candidateUrl))
+      );
+      setSavedStarredItems((prev) =>
+        prev.filter((it) => it.id !== candidate.id && (!candidateUrl || it.url !== candidateUrl))
+      );
+      setItems((prev) =>
+        prev.filter((it) => it.id !== candidate.id && (!candidateUrl || it.url !== candidateUrl))
+      );
+
+      // Commit immediately so navigating away or re-rendering within 5s never drops the mutation
+      try {
+        await Promise.all([
+          fetch(`/api/reading-list?id=${candidate.id}`, { method: "DELETE" }),
+          patchItem(candidate.id, { isStarred: false }),
+        ]);
+        refreshBacklogSummary();
+      } catch (err) {
+        console.error("Failed to drop research candidate", err);
+      }
+
       setUndoAction({
         id: candidate.id,
         message: `Dropped "${candidate.title.slice(0, 28)}..." from Research`,
-        onUndo: () => {
+        onUndo: async () => {
+          if (removedResearch) {
+            await commitSaveToResearch({
+              url: removedResearch.url,
+              title: removedResearch.title,
+              sourceContext: removedResearch.author || undefined,
+              fullContentHtml: removedResearch.fullContentHtml || undefined,
+              fullContentMarkdown: removedResearch.fullContentMarkdown || undefined,
+              isWork: Boolean(removedResearch.isWork),
+            });
+          }
           refreshBacklogSummary();
         },
-        onCommit: async () => {
-          try {
-            await fetch(`/api/reading-list?id=${candidate.id}`, { method: "DELETE" });
-            refreshBacklogSummary();
-          } catch (err) {
-            console.error("Failed to drop research candidate", err);
-          }
-        },
+        onCommit: () => {},
       });
     } else {
-      setSavedStarredItems((prev) => prev.filter((it) => it.id !== candidate.id));
+      setSavedStarredItems((prev) =>
+        prev.filter((it) => it.id !== candidate.id && (!candidateUrl || it.url !== candidateUrl))
+      );
+      setSavedResearchItems((prev) =>
+        prev.filter((it) => it.id !== candidate.id && (!candidateUrl || it.url !== candidateUrl))
+      );
+
+      // Commit immediately against the backend
+      await commitToggleStar(candidate.id, false);
+
       setUndoAction({
         id: candidate.id,
         message: `Unstarred "${candidate.title.slice(0, 28)}..."`,
-        onUndo: () => {
-          refreshBacklogSummary();
+        onUndo: async () => {
+          await commitToggleStar(candidate.id, true);
         },
-        onCommit: async () => {
-          await commitToggleStar(candidate.id, false);
-        },
+        onCommit: () => {},
       });
     }
   };
 
-  const handleDeclareBankruptcy = (staleItems: any[]) => {
+  const handleDeclareBankruptcy = async (staleItems: any[]) => {
     if (!staleItems || staleItems.length === 0) return;
     const staleIds = staleItems.map((it) => it.id);
     const staleSet = new Set(staleIds);
     const previousItems = [...items];
 
-    const researchIds = staleItems
-      .filter(
-        (it) =>
-          selectedView === "reading_list" ||
-          it.sourceQueue === "research_inbox" ||
-          (!it.feedId && !it.isStarred)
-      )
-      .map((it) => it.id);
+    const researchItemsToRestore = staleItems.filter(
+      (it) =>
+        selectedView === "reading_list" ||
+        it.sourceQueue === "research_inbox" ||
+        (!it.feedId && !it.isStarred)
+    );
+    const researchIds = researchItemsToRestore.map((it) => it.id);
     const starredIds = staleItems
       .filter((it) => !researchIds.includes(it.id))
       .map((it) => it.id);
 
     setItems((prev) => prev.filter((it) => !staleSet.has(it.id)));
+    setSavedResearchItems((prev) => prev.filter((it) => !staleSet.has(it.id)));
+    setSavedStarredItems((prev) => prev.filter((it) => !staleSet.has(it.id)));
     if (selectedItemId && staleSet.has(selectedItemId)) {
       setSelectedItemId(null);
+    }
+
+    try {
+      await Promise.all([
+        ...researchIds.map((id) => fetch(`/api/reading-list?id=${id}`, { method: "DELETE" })),
+        ...(starredIds.length > 0 ? [patchItem(starredIds, { isStarred: false })] : []),
+      ]);
+      refreshBacklogSummary();
+    } catch (err) {
+      console.error("Failed to execute bankruptcy sweep", err);
     }
 
     setUndoAction({
       id: `bankruptcy-queue-${Date.now()}`,
       message: `Cleared ${staleIds.length} stale item${staleIds.length === 1 ? "" : "s"} from queue`,
-      onUndo: () => {
+      onUndo: async () => {
         setItems(previousItems);
-      },
-      onCommit: async () => {
         try {
           await Promise.all([
-            ...researchIds.map((id) => fetch(`/api/reading-list?id=${id}`, { method: "DELETE" })),
-            ...(starredIds.length > 0 ? [patchItem(starredIds, { isStarred: false })] : []),
+            ...researchItemsToRestore.map((it) =>
+              commitSaveToResearch({
+                url: it.url,
+                title: it.title,
+                sourceContext: it.author || undefined,
+                fullContentHtml: it.fullContentHtml || undefined,
+                fullContentMarkdown: it.fullContentMarkdown || undefined,
+                isWork: it.isWork,
+              })
+            ),
+            ...(starredIds.length > 0 ? [patchItem(starredIds, { isStarred: true })] : []),
           ]);
           refreshBacklogSummary();
         } catch (err) {
-          console.error("Failed to execute bankruptcy sweep", err);
+          console.error("Failed to undo bankruptcy sweep", err);
         }
       },
+      onCommit: () => {},
     });
   };
 
@@ -824,34 +874,42 @@ export default function HomePage() {
     }
   };
 
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     const removedItem = items.find((it) => it.id === id);
     if (!removedItem) return;
     if (
       selectedView === "reading_list" ||
       (selectedView === "reading_queue" && removedItem.sourceQueue === "research_inbox")
     ) {
-      // Optimistically hide from UI
+      // Optimistically hide from UI and commit immediately so navigation never drops the delete
       setItems((prev) => prev.filter((it) => it.id !== id));
       setSavedResearchItems((prev) => prev.filter((it) => it.id !== id));
       if (selectedItemId === id) setSelectedItemId(null);
+
+      try {
+        await fetch(`/api/reading-list?id=${id}`, { method: "DELETE" });
+        refreshBacklogSummary();
+      } catch (err) {
+        console.error("Failed to commit deletion", err);
+      }
 
       // Offer 5-second undo toast
       setUndoAction({
         id,
         message: `Deleted "${removedItem.title.slice(0, 28)}..."`,
-        onUndo: () => {
+        onUndo: async () => {
           setItems((prev) => [removedItem, ...prev]);
+          await commitSaveToResearch({
+            url: removedItem.url,
+            title: removedItem.title,
+            sourceContext: removedItem.author || undefined,
+            fullContentHtml: removedItem.fullContentHtml || undefined,
+            fullContentMarkdown: removedItem.fullContentMarkdown || undefined,
+            isWork: removedItem.isWork,
+          });
           refreshBacklogSummary();
         },
-        onCommit: async () => {
-          try {
-            await fetch(`/api/reading-list?id=${id}`, { method: "DELETE" });
-            refreshBacklogSummary();
-          } catch (err) {
-            console.error("Failed to commit deletion", err);
-          }
-        },
+        onCommit: () => {},
       });
     }
   };

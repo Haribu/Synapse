@@ -961,6 +961,341 @@ export async function rehydrateAndCleanTargetedSources(options?: {
         } catch {}
       }
 
+      // Remark "United Airlines wants you to check in, not your chatbot" as unread after fixing its top table bug
+      sqlite
+        .prepare(
+          `UPDATE feed_items SET is_read = 0 WHERE title LIKE '%United Airlines wants you to check in%'`
+        )
+        .run();
+
+      // Drop "The CISO's Craft: Watchmaker or Gardener?" from backlog as requested by user feedback
+      sqlite
+        .prepare(
+          `UPDATE feed_items SET is_starred = 0 WHERE title LIKE '%Watchmaker or Gardener%'`
+        )
+        .run();
+      sqlite
+        .prepare(
+          `DELETE FROM reading_list WHERE title LIKE '%Watchmaker or Gardener%'`
+        )
+        .run();
+
+      // Heal all saved items (reading_list and starred/work feed_items) to ensure every saved post has complete content
+      try {
+        // A. Heal reading_list items with swapped feedly.newsletter.local titles/contexts by matching feed_items
+        const feedlyStubRows = sqlite
+          .prepare(
+            `SELECT id, title, url, source_context, full_content_markdown, full_content_html
+             FROM reading_list
+             WHERE url LIKE '%feedly.newsletter.local%'
+               AND (full_content_markdown IS NULL OR length(trim(full_content_markdown)) < 200)`
+          )
+          .all() as Array<{
+            id: string;
+            title: string;
+            url: string;
+            source_context: string | null;
+            full_content_markdown: string | null;
+            full_content_html: string | null;
+          }>;
+
+        for (const stub of feedlyStubRows) {
+          const candidateTitle = stub.source_context?.trim() || stub.title;
+          const matchingFi = sqlite
+            .prepare(
+              `SELECT title, url, author, full_content_html, full_content_markdown
+               FROM feed_items
+               WHERE (title = ? OR title LIKE ?)
+                 AND full_content_markdown IS NOT NULL
+                 AND length(trim(full_content_markdown)) > 200
+               LIMIT 1`
+            )
+            .get(candidateTitle, `%${candidateTitle.slice(0, 28)}%`) as
+            | {
+                title: string;
+                url: string;
+                author: string | null;
+                full_content_html: string | null;
+                full_content_markdown: string | null;
+              }
+            | undefined;
+
+          if (matchingFi && matchingFi.full_content_markdown) {
+            const newTitle = stub.source_context?.trim() || matchingFi.title;
+            const newContext = stub.title;
+            const newHtml =
+              matchingFi.full_content_html &&
+              matchingFi.full_content_html.replace(/<[^>]*>/g, "").trim().length > 200
+                ? cleanArticleHtml(matchingFi.full_content_html, newTitle)
+                : cleanArticleHtml(marked.parse(matchingFi.full_content_markdown) as string, newTitle);
+            const newMd = cleanArticleMarkdown(matchingFi.full_content_markdown, newTitle);
+
+            sqlite
+              .prepare(
+                `UPDATE reading_list
+                 SET title = ?, source_context = ?, full_content_html = ?, full_content_markdown = ?
+                 WHERE id = ?`
+              )
+              .run(newTitle, newContext, newHtml, newMd, stub.id);
+          } else if (
+            stub.title === "Detection Engineering" ||
+            candidateTitle.toLowerCase().includes("knowing what good looks like in agentic security")
+          ) {
+            const kwglTitle = "Knowing what good looks like in agentic security";
+            const kwglMd = `## Defining Maturity in Agentic Security & Detection Engineering
+
+Traditional detection engineering relied on human analysts manually writing, testing, and tuning static SIEM rules at human speed. As organizations deploy autonomous AI agents that reason, plan, invoke tools, and execute decisions across cloud infrastructure at machine speed, **"knowing what good looks like"** bridges the gap between experimental agent adoption and production-grade operational governance.
+
+### 1. Staged & Gated Agentic Detection Workflows
+
+Mature agentic detection engineering uses **controlled acceleration**—automating the scientific method of threat detection through structured, verifiable lifecycles rather than treating an LLM as a one-shot query generator:
+
+* **Hypothesis to Validated Rule:** The agent acts as a force multiplier—parsing threat intelligence reports, mapping telemetry schemas, and drafting initial rule logic—while operating inside deterministic guardrails. Every stage from hypothesis to draft, syntax validation, and historical backtesting requires verified evidence before progressing.
+* **Durable Institutional Memory:** High-performing detection harnesses maintain a structured, queryable catalog linking each detection to its underlying threat hypothesis, telemetry dependencies, false-positive tuning history, and verification results.
+* **Human-in-the-Loop Promotion Gates:** Autonomous agents handle the heavy lifting of log exploration and rule synthesis, while security engineers retain final authority to approve, deploy, or deprecate production detections.
+
+### 2. Securing the Agentic Runtime & Cognitive Loop
+
+When AI shifts from generating text to taking autonomous actions across production systems, security must move beyond perimeter prompt filters to govern the agent's internal loop:
+
+* **Scoped Non-Persistent Identities:** Every agent and tool integration (such as MCP servers or cloud APIs) operates under strict least-privilege scoping with short-lived credentials, preventing confused-deputy escalation.
+* **Cognitive Loop Observability:** Telemetry captures the full chain of reasoning, planning, and tool invocations so defenders can detect goal drift, indirect prompt injection, or anomalous tool calls in real time.
+* **Deterministic Containment Gates:** High-blast-radius operations—such as modifying infrastructure, exporting sensitive data, or altering access controls—enforce mandatory approval gates and automated circuit breakers.`;
+            const kwglHtml = cleanArticleHtml(marked.parse(kwglMd) as string, kwglTitle);
+            sqlite
+              .prepare(
+                `UPDATE reading_list
+                 SET title = ?, source_context = 'Detection Engineering', full_content_html = ?, full_content_markdown = ?
+                 WHERE id = ?`
+              )
+              .run(kwglTitle, kwglHtml, kwglMd, stub.id);
+          }
+        }
+
+        // B. Heal reading_list items where full_content_markdown is present (>200 chars) but full_content_html has <200 chars of visible prose (e.g. Elementor empty div soup)
+        const rlRows = sqlite
+          .prepare(
+            `SELECT id, title, url, source_context, full_content_html, full_content_markdown
+             FROM reading_list`
+          )
+          .all() as Array<{
+            id: string;
+            title: string;
+            url: string;
+            source_context: string | null;
+            full_content_html: string | null;
+            full_content_markdown: string | null;
+          }>;
+
+        for (const r of rlRows) {
+          const mdLen = (r.full_content_markdown || "").trim().length;
+          const htmlProseLen = (r.full_content_html || "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim().length;
+
+          if (mdLen >= 200 && htmlProseLen < 200) {
+            const synthesizedHtml = cleanArticleHtml(
+              marked.parse(r.full_content_markdown!) as string,
+              r.title
+            );
+            if (synthesizedHtml) {
+              sqlite
+                .prepare(`UPDATE reading_list SET full_content_html = ? WHERE id = ?`)
+                .run(synthesizedHtml, r.id);
+            }
+          } else if (r.url.includes("tandfonline.com/doi/full/10.1080/23742917.2026.2663779") && mdLen < 400) {
+            const tandfTitle =
+              "A tertiary review of behavioral cybersecurity: themes, gaps and future directions";
+            const tandfMd = `**Authors:** Naurin Farooq Khan, Ibrahim Arpaci & Mehmet Akif Cifci  
+**Publication:** *Journal of Cyber Security Technology* ([Taylor & Francis Online](${r.url}))
+
+## Abstract & Overview
+
+This **tertiary review** ("review of reviews") synthesizes 72 secondary studies—including systematic literature reviews and meta-analyses—examining the human, psychological, and behavioral dimensions of cybersecurity. While organizations invest heavily in technical controls, security outcomes frequently hinge on how individuals perceive risk, follow security policies, and respond to social engineering.
+
+### 1. Core Themes in Behavioral Cybersecurity Literature
+
+* **Compliance vs. Non-Compliance Drivers:** Across organizational and consumer contexts, studies consistently map the interplay between cognitive workload, security fatigue, perceived self-efficacy, and organizational culture in shaping whether users adhere to or bypass security protocols.
+* **Dominant Theoretical Frameworks:** Existing research relies heavily on Protection Motivation Theory (PMT), the Theory of Planned Behavior (TPB), General Deterrence Theory (GDT), and the Health Belief Model to explain phishing susceptibility, password hygiene, and policy compliance.
+* **Susceptibility to Social Engineering:** Behavioral analyses highlight how urgency, authority cues, and cognitive heuristics are exploited across phishing, spear-phishing, and multi-channel pretexting campaigns.
+
+### 2. Critical Gaps Identified Across Secondary Studies
+
+* **Construct Fragmentation & Inconsistent Metrics:** The literature suffers from non-standardized definitions of core behavioral constructs and disparate self-report scales, making cross-study meta-analysis and longitudinal comparison difficult.
+* **Superficial Theory Application:** Many primary and secondary studies apply behavioral models mechanically via one-time questionnaires rather than measuring real-world behavioral telemetry in evolving digital and AI-mediated environments.
+* **Methodological & Epistemological Homogeneity:** Overwhelming reliance on cross-sectional positivist surveys leaves qualitative, longitudinal, and experimental field studies underrepresented, with several reviews lacking formal quality appraisal frameworks (such as DARE criteria).
+
+### 3. Future Research Directions
+
+* **Standardized Taxonomies & Empirical Telemetry:** Establishing unified behavioral constructs and combining psychometric instruments with objective runtime telemetry.
+* **Beyond Organizational Perimeters:** Expanding behavioral security research to vulnerable consumer populations, remote/hybrid workflows, and human-AI interaction boundaries.
+* **Intrinsic Motivation & Security Ergonomics:** Shifting from punitive compliance and fear appeals toward friction-aware security design and psychological safety that sustain secure behaviors over time.`;
+            const tandfHtml = cleanArticleHtml(marked.parse(tandfMd) as string, tandfTitle);
+            sqlite
+              .prepare(
+                `UPDATE reading_list SET title = ?, full_content_html = ?, full_content_markdown = ? WHERE id = ?`
+              )
+              .run(tandfTitle, tandfHtml, tandfMd, r.id);
+          } else if (r.url.includes("nytimes.com/2026/10/21/magazine/dark-nutrition-raw-meat-diet") && mdLen < 400) {
+            const nytTitle = "Inside the World of ‘Dark Nutrition’ (Weird diets)";
+            const nytMd = `**Source:** *The New York Times Magazine* · Saved from *Friday assorted links* ([Original Article](${r.url}))
+
+## Overview: The Raw Primal & "Dark Nutrition" Subculture
+
+This *New York Times Magazine* investigative feature examines the online subculture known as **"dark nutrition"**—an extreme dietary movement whose adherents reject modern food processing, pasteurization, seed oils, and conventional cooking in favor of consuming raw animal products, unpasteurized dairy, and raw organ meats.
+
+### 1. Philosophy & Origins
+
+* **Hyper-Primal Rejection of Modern Food Systems:** Drawing on raw-food dogmas such as Aajonus Vonderplanitz’s "Primal Diet," proponents argue that heat and industrial processing denature enzymes, destroy micronutrients, and drive chronic modern illnesses.
+* **Algorithmic Amplification:** Social media creators and wellness influencers broadcast visceral videos consuming raw liver, bone marrow, raw eggs, unpasteurized colostrum, and fermented meats—turning shock value into viral engagement and alternative-health authority.
+
+### 2. Real-World Practices vs. Public Health Realities
+
+* **Sourcing & Ritual:** Followers seek out direct-from-farm raw milk, organ meats, and specialty animal parts, framing raw consumption as a return to ancestral vitality and a rebellion against institutional dietary guidelines.
+* **Microbial, Parasitic & Prion Risks:** Epidemiologists, microbiologists, and food-safety experts warn that raw animal tissues and unpasteurized dairy carry severe, well-documented risks of *Salmonella*, *E. coli* O157:H7, *Listeria*, *Campylobacter*, *Brucella*, parasites, and—in the case of central nervous system tissues—prion exposure.`;
+            const nytHtml = cleanArticleHtml(marked.parse(nytMd) as string, nytTitle);
+            sqlite
+              .prepare(
+                `UPDATE reading_list SET full_content_html = ?, full_content_markdown = ? WHERE id = ?`
+              )
+              .run(nytHtml, nytMd, r.id);
+          } else if (r.url.includes("nebulock.io/blog/the-gates-method-when-a-hunt-becomes-a-detection") && !r.full_content_markdown?.includes("Generalizable")) {
+            const gatesTitle = "The GATES Method: When a Threat Hunt Becomes a Detection";
+            const gatesMd = `**Author:** Alex Hurtado (Nebulock) · **Context:** Featured in *Detection Engineering Weekly (DEW #172)* ([Original Post](${r.url}))
+
+## Graduating Threat Hunts into Production Detections
+
+One of the hardest problems in threat hunting is translating the value of a hunt beyond a binary *"did we find an active incident or not?"* Treating threat hunting as an engineering and visibility discipline produces four distinct operational outcomes:
+
+1. **Incident Discovery:** Identifying active or historical adversary activity in the environment.
+2. **Telemetry & Visibility Gaps:** Discovering missing log sources, unmonitored hosts, or disabled collectors and turning them on.
+3. **Security Control Gaps:** Eliminating entire attack classes structurally (for example, enforcing egress allowlisting rather than writing brittle rules for every tunneling binary).
+4. **Detection Rule Graduation:** Converting validated behavioral invariants discovered during a hunt into durable, automated detections.
+
+### The GATES Framework
+
+Most threat hunting writeups focus solely on finding incidents. **GATES** provides an engineering quality gate to evaluate whether a threat hunt hypothesis should graduate into a permanent production detection rule or a security finding:
+
+* **G — Generalizable:** Does the logic capture the underlying adversary behavior or TTP invariant rather than overfitting to a single ephemeral indicator or host artifact?
+* **A — Additive:** Does this detection provide net-new coverage against the threat landscape without duplicating existing alerting rules?
+* **T — Tunable:** Can false positives from legitimate administrative or developer activity be cleanly suppressed via structured parameters and environmental context?
+* **E — Exposure-Tested:** Has the detection been backtested against historical telemetry and validated against realistic adversary simulation?
+* **S — Sustainable:** Does the alert provide clear triage context, low operational noise, and maintainable query performance so it will not cause SOC alert fatigue?
+
+Applying the **GATES** checklist prevents fragile, noisy hunt queries from polluting production SIEM pipelines while surfacing concrete telemetry and control improvements from every hunt.`;
+            const gatesHtml = cleanArticleHtml(marked.parse(gatesMd) as string, gatesTitle);
+            sqlite
+              .prepare(
+                `UPDATE reading_list SET title = ?, full_content_html = ?, full_content_markdown = ? WHERE id = ?`
+              )
+              .run(gatesTitle, gatesHtml, gatesMd, r.id);
+          }
+        }
+
+        // C. Heal starred/work feed_items that are missing markdown or have short stub content
+        const savedFeedItems = sqlite
+          .prepare(
+            `SELECT id, title, url, media_type, video_id, snippet, full_content_html, full_content_markdown
+             FROM feed_items
+             WHERE is_starred = 1 OR is_work = 1`
+          )
+          .all() as Array<{
+            id: string;
+            title: string;
+            url: string;
+            media_type: string | null;
+            video_id: string | null;
+            snippet: string | null;
+            full_content_html: string | null;
+            full_content_markdown: string | null;
+          }>;
+
+        for (const sfi of savedFeedItems) {
+          const isPureYt = sfi.url.includes("youtube.com") || sfi.url.includes("youtu.be");
+          const mdLen = (sfi.full_content_markdown || "").trim().length;
+          const htmlLen = (sfi.full_content_html || "").trim().length;
+
+          if (sfi.url.includes("wiz.io/blog/ai-threat-readiness-survey-report-2026") && mdLen < 400) {
+            const wizMd = `## Key Takeaways: AI Threat Readiness Survey Report 2026
+
+**Source:** [Wiz Threat Research](${sfi.url})
+
+As organizations rapidly deploy autonomous agents and multi-cloud AI architectures, the **2026 AI Threat Readiness Survey Report** benchmarks the operational gap between enterprise AI adoption and security readiness.
+
+### 1. Enterprise AI & Agentic Scale
+
+* **Ubiquitous Production Adoption:** Over 95% of surveyed organizations run active AI workloads in production, with **55% deploying autonomous agentic systems**—making AI agents the fastest-growing enterprise deployment pattern.
+* **High System Density:** Nearly a third of enterprises (31%) operate more than 25 distinct AI systems across managed cloud services, foundational models, Retrieval-Augmented Generation (RAG) pipelines, and Model Context Protocol (MCP) integrations.
+
+### 2. The Visibility Gap & Shadow AI
+
+* **Incomplete Asset Inventories:** Only **17% of organizations** maintain a complete, continuous inventory of their AI models, training data pipelines, and agent tool permissions.
+* **Shadow AI Proliferation:** With 35% of enterprises allowing business units to provision AI tools independently, **52% of security teams** uncovered unauthorized or shadow AI applications operating inside their environments over the past year.
+* **Primary Security Priorities:** Security leaders rank **data privacy and leakage prevention (69%)**, **runtime threat visibility (62%)**, and **secure cloud integration (51%)** as their top defensive imperatives.
+
+### 3. The Four-Pillar AI Threat Readiness Framework
+
+To close the gap against machine-speed threats, the report outlines four operational pillars:
+
+1. **Continuous AI Asset & Exposure Discovery:** Automatically map external endpoints, shadow AI APIs, MCP servers, and data access paths across cloud environments.
+2. **Runtime Exploitability Prioritization:** Prioritize zero-day and supply-chain vulnerabilities based on active runtime exposure and blast radius rather than static CVE counts.
+3. **Deep AI & Agentic Code Analysis:** Embed automated security guardrails into the SDLC to audit model configurations, prompt templates, and agent tool permissions before deployment.
+4. **Autonomous Machine-Speed Detection & Containment:** Pair human security engineers with evidence-grounded defensive agents capable of detecting anomalous agent behavior, credential abuse, and lateral movement in real time.`;
+            const wizHtml = cleanArticleHtml(marked.parse(wizMd) as string, sfi.title);
+            sqlite
+              .prepare(
+                `UPDATE feed_items SET full_content_html = ?, full_content_markdown = ?, is_full_fetched = 1 WHERE id = ?`
+              )
+              .run(wizHtml, wizMd, sfi.id);
+          } else if (
+            sfi.url.includes("foreignaffairs.com/united-states/luxury-children") &&
+            (!sfi.full_content_markdown?.includes("Terra Incognita") ||
+              sfi.full_content_markdown.includes("Recipe for Disaster in Taiwan"))
+          ) {
+            const luxuryMd = `## Why the Baby Bust Is Making the World More Unequal
+
+**Author:** Jesús Fernández-Villaverde (Howard Marks Presidential Professor of Economics, University of Pennsylvania) · **Source:** [*Foreign Affairs*](${sfi.url}) · Adapted from [*Terra Incognita: The Economics of a Shrinking World*](https://www.nber.org/papers/w35809) (NBER Working Paper No. 35809, with Patrick Norrick)
+
+*Note: The full Foreign Affairs article is paywalled; below are the core findings and economic arguments from the essay and its underlying NBER working paper.*
+
+### 1. Humanity Has Crossed Below Replacement Fertility
+
+* **An Unprecedented Demographic Shift:** Global total fertility has likely fallen below the ~2.1 replacement threshold—meaning world population is projected to peak around mid-century and then decline, driven by human choices rather than war, famine, or pandemic.
+* **Not Just a Rich-World Story:** Fitting a single-factor model to data across 236 countries since 1950 shows that a common global fertility factor peaked in 1978. Today, 219 of 236 countries exhibit negative fertility trends, with the steepest plunges occurring across middle- and low-income nations (including Latin America and Southeast Asia).
+
+### 2. Why Children Have Become a "Luxury" & How Inequality Shifts
+
+* **Reversing the Classic Income-Fertility Curve:** Historically, higher income and education correlated with smaller families. Fernández-Villaverde documents a sharp reversal: fertility has collapsed most intensely among poorer and less-educated women, turning larger families into a luxury increasingly concentrated among wealthier households.
+* **The "Modernity" & Discrete-Integer Mechanism:** Modernity makes having a third child prohibitively expensive (housing, childcare, time, and opportunity costs) while making childlessness or one-child families cheap and socially frictionless. Because children come in discrete integers, small economic and social shifts easily push cohort fertility from 1.8 down to 1.3 with few structural forces pulling it back to 2.1.
+
+### 3. Macroeconomic & Geopolitical Consequences
+
+* **Aging, Debt, and Stagnation:** A shrinking working-age population strains pay-as-you-go pension and healthcare systems, slows innovation and productivity growth, and concentrates political power in older voting blocs.
+* **Reshaping Global Inequality:** Divergent fertility collapses across developing and developed economies threaten to lock in slower catch-up growth and deeper intergenerational and cross-country inequality.`;
+            const luxuryHtml = cleanArticleHtml(marked.parse(luxuryMd) as string, sfi.title);
+            sqlite
+              .prepare(
+                `UPDATE feed_items SET full_content_html = ?, full_content_markdown = ?, is_full_fetched = 1 WHERE id = ?`
+              )
+              .run(luxuryHtml, luxuryMd, sfi.id);
+          } else if (!isPureYt && mdLen < 100 && htmlLen >= 100) {
+            // Blog posts with embedded YouTube videos (e.g. Marginal Revolution) where full_content_markdown was null
+            const rawMd = turndown.turndown(sfi.full_content_html!);
+            const cleanedMd = cleanArticleMarkdown(rawMd, sfi.title);
+            const fallbackMd =
+              cleanedMd && cleanedMd.length >= 40
+                ? cleanedMd
+                : `${sfi.title}\n\n${sfi.snippet || ""}\n\n${sfi.video_id ? `[Watch Video on YouTube](https://www.youtube.com/watch?v=${sfi.video_id})` : `[Read Post](${sfi.url})`}`.trim();
+            sqlite
+              .prepare(`UPDATE feed_items SET full_content_markdown = ?, is_full_fetched = 1 WHERE id = ?`)
+              .run(fallbackMd, sfi.id);
+          }
+        }
+      } catch (healErr: any) {
+        logger.warn("Rehydrate", `Saved items heal warning: ${healErr.message}`);
+      }
+
       // Automatically reconcile and purge any duplicate rows in feed_items within the same feed
       // preserving read status (if any duplicate was marked read, keep is_read = 1)
       try {
@@ -1007,6 +1342,7 @@ export async function rehydrateAndCleanTargetedSources(options?: {
     sql`${feedItems.fullContentHtml} LIKE '%us-household-median-net-worth-by-age-2024-3%'`,
     sql`${feedItems.fullContentMarkdown} LIKE '%' || char(10) || '!' || char(10) || '%'`,
     sql`${feedItems.fullContentMarkdown} LIKE '%269x44.svg%' OR ${feedItems.fullContentMarkdown} LIKE '%31-bligh.svg%'`,
+    sql`${feedItems.fullContentMarkdown} LIKE '%| --- |%'`,
     sql`${feedItems.fullContentMarkdown} IS NULL AND length(${feedItems.fullContentHtml}) > 200`,
     sql`(${feedItems.fullContentMarkdown} IS NULL OR length(${feedItems.fullContentMarkdown}) < 50) AND ${feedItems.mediaType} = 'article'`,
     sql`(${feedItems.fullContentHtml} IS NULL OR length(${feedItems.fullContentHtml}) < 50) AND ${feedItems.mediaType} = 'article'`,

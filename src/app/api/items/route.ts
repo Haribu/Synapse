@@ -298,8 +298,49 @@ export async function PATCH(req: Request) {
 
     if (Object.keys(updates).length > 0) {
       db.update(feedItems).set(updates).where(inArray(feedItems.id, targetIds)).run();
-
       db.update(readingList).set(updates).where(inArray(readingList.id, targetIds)).run();
+
+      // Synchronize isStarred across both tables by matching URL and title so duplicate copies in feed_items and reading_list never desync
+      if (typeof isStarred === "boolean") {
+        const fiRows = db
+          .select({ url: feedItems.url, title: feedItems.title })
+          .from(feedItems)
+          .where(inArray(feedItems.id, targetIds))
+          .all();
+        const rlRows = db
+          .select({ url: readingList.url, title: readingList.title })
+          .from(readingList)
+          .where(inArray(readingList.id, targetIds))
+          .all();
+
+        const matchedUrls = Array.from(
+          new Set([...fiRows, ...rlRows].map((r) => r.url).filter(Boolean))
+        );
+        const matchedTitles = Array.from(
+          new Set([...fiRows, ...rlRows].map((r) => r.title?.trim()).filter(Boolean))
+        );
+
+        if (matchedUrls.length > 0) {
+          db.update(feedItems)
+            .set({ isStarred })
+            .where(inArray(feedItems.url, matchedUrls))
+            .run();
+          db.update(readingList)
+            .set({ isStarred })
+            .where(inArray(readingList.url, matchedUrls))
+            .run();
+        }
+        if (matchedTitles.length > 0) {
+          db.update(feedItems)
+            .set({ isStarred })
+            .where(inArray(feedItems.title, matchedTitles))
+            .run();
+          db.update(readingList)
+            .set({ isStarred })
+            .where(inArray(readingList.title, matchedTitles))
+            .run();
+        }
+      }
     }
 
     return NextResponse.json({ success: true, count: targetIds.length });
