@@ -86,7 +86,7 @@ export async function GET(req: Request) {
 
     // Exclude any YouTube Shorts across all listing views
     conditions.push(
-      sql`(${feedItems.url} NOT LIKE '%/shorts/%' AND lower(${feedItems.title}) NOT LIKE '%#shorts%' AND lower(${feedItems.title}) NOT LIKE '%#short%')`
+      sql`NOT ((${feedItems.url} LIKE '%youtube.com%' OR ${feedItems.url} LIKE '%youtu.be%') AND (${feedItems.url} LIKE '%/shorts/%' OR lower(${feedItems.title}) LIKE '%#shorts%' OR lower(${feedItems.title}) LIKE '%#ytshorts%'))`
     );
 
     if (feedId) {

@@ -9,6 +9,7 @@ import TurndownService from "turndown";
 import { cleanArticleMarkdown, cleanAuthor } from "@/lib/utils/clean-article";
 import { cleanArticleHtml } from "@/lib/utils/clean-article";
 import { cleanUrl } from "@/lib/services/link-cleaner";
+import { purgeYouTubeShortsFromDb } from "@/lib/services/shorts-purge";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -1592,36 +1593,15 @@ To close the gap against machine-speed threats, the report outlines four operati
 }
 
 /**
- * Purges YouTube Shorts from the database across URL, title, snippet, and content matches.
+ * Purges YouTube Shorts from the database across YouTube URLs, titles, and snippets.
  */
-export function purgeYouTubeShorts(): { deletedCount: number } {
+export function purgeYouTubeShorts(targetDb: { prepare: (sql: string) => any } = sqlite): { deletedCount: number } {
   try {
-    const shortsStmt = sqlite.prepare(`
-      DELETE FROM feed_items
-      WHERE (
-        url LIKE '%/shorts/%'
-        OR lower(title) LIKE '%#shorts%'
-        OR lower(title) LIKE '%#short%'
-        OR lower(title) LIKE '%#ytshorts%'
-        OR (
-          (media_type = 'video' OR video_id IS NOT NULL OR url LIKE '%youtube%')
-          AND (
-            lower(coalesce(snippet, '')) LIKE '%#shorts%'
-            OR lower(coalesce(snippet, '')) LIKE '%#short%'
-            OR lower(coalesce(snippet, '')) LIKE '%#ytshorts%'
-            OR lower(coalesce(snippet, '')) LIKE '%/shorts/%'
-            OR lower(coalesce(full_content_html, '')) LIKE '%#shorts%'
-            OR lower(coalesce(full_content_html, '')) LIKE '%#short%'
-            OR lower(coalesce(full_content_html, '')) LIKE '%/shorts/%'
-          )
-        )
-      )
-    `);
-    const result = shortsStmt.run();
-    if (result.changes > 0) {
-      logger.info("SyncEngine", `Purged ${result.changes} YouTube Shorts from feed_items`);
+    const deletedCount = purgeYouTubeShortsFromDb(targetDb);
+    if (deletedCount > 0) {
+      logger.info("SyncEngine", `Purged ${deletedCount} YouTube Shorts from feed_items`);
     }
-    return { deletedCount: result.changes };
+    return { deletedCount };
   } catch (err: any) {
     logger.warn("SyncEngine", `purgeYouTubeShorts failed: ${err.message}`);
     return { deletedCount: 0 };

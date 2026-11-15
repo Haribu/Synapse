@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.4.11] - 2026-11-15
+
+### Fixed
+- **YouTube Shorts Purge & Unread Re-Ingestion Loop (`src/lib/services/shorts-purge.ts`, `src/lib/services/sync-engine.ts`, `src/app/api/items/route.ts`):**
+  - Scoped `purgeYouTubeShortsFromDb` and the `GET /api/items` Shorts exclusion strictly to YouTube URLs (`youtube.com`, `youtu.be`), removing the broad `video_id IS NOT NULL` + `#short` HTML/snippet scan that was deleting non-YouTube newsletter articles with embedded YouTube videos (e.g. Benn Stancil's *"How to lose your mind"*) and causing `syncFeed` to re-ingest them as unread every hour.
+  - Added regression unit tests in `src/lib/services/sync-engine.test.ts`.
+
 ## [1.4.10] - 2026-11-15
 
 ### Fixed
