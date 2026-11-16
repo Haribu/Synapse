@@ -1,7 +1,7 @@
 # Synapse — Private, AI-Native RSS++ Reader & Knowledge Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Version: 1.4.11](https://img.shields.io/badge/Version-1.4.11-emerald.svg)](./package.json)
+[![Version: 1.5.0](https://img.shields.io/badge/Version-1.5.0-emerald.svg)](./package.json)
 [![CI](https://github.com/Haribu/synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Haribu/synapse/actions)
 [![Container](https://img.shields.io/badge/GHCR-ghcr.io%2Fharibu%2Fsynapse-blue)](https://github.com/Haribu/synapse/pkgs/container/synapse)
 [![MCP](https://img.shields.io/badge/MCP-Native_Server-8A2BE2)](./scripts/mcp-server.ts)
@@ -148,6 +148,10 @@ Copy `.env.example` to `.env` to customize your instance:
 | `AUTH_MODE`                 | `none`         | Authentication mode: `none`, `cloudflare`, or `header`                   |
 | `ALLOWED_EMAILS`            | _empty_        | Whitelist of user emails for Cloudflare Access                           |
 | `GOOGLE_OAUTH_ACCESS_TOKEN` | _empty_        | Optional Google Docs & Drive export token                                |
+| `SYNAPSE_AI_ENABLED`        | _empty_        | Set to `false` to explicitly disable AI story grouping                   |
+| `SYNAPSE_AI_BASE_URL`       | _empty_        | Optional OpenAI-compatible base URL (e.g. Gemini AI Studio or local Ollama) |
+| `SYNAPSE_AI_API_KEY`        | _empty_        | Optional API key for AI story grouping (omit for zero-call deterministic fallback) |
+| `SYNAPSE_AI_MODEL`          | `gemini-3.5-flash-lite` | Model identifier when `SYNAPSE_AI_API_KEY` is configured       |
 | `NEXT_PUBLIC_GITHUB_REPO_URL` | `https://github.com/Haribu/synapse` | Upstream repository for raising GitHub issues from the UI |
 
 ### 💬 Dual-Mode Feedback & Idea Logging

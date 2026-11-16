@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [1.5.0] - 2026-11-16
+
+### Added
+- **Optional AI Semantic Story Grouping (`src/lib/utils/ai-clustering.ts`, `src/lib/services/ai-clustering.ts`, `src/lib/services/sync-engine.ts`):**
+  - Added an opt-in, OpenAI-compatible AI clustering pass after feed syncs (`SYNAPSE_AI_BASE_URL`, `SYNAPSE_AI_API_KEY`, `SYNAPSE_AI_MODEL` defaulting to `gemini-3.5-flash-lite` when an API key is provided, plus `SYNAPSE_AI_ENABLED` override).
+  - Persists validated `cluster_id` values on `feed_items` in SQLite (`src/lib/db/schema.ts`, `src/lib/db/index.ts`) and exposes `clusterId` via `GET /api/items`.
+  - Enforces deterministic post-filters on all LLM-proposed groups: 48-hour timestamp window, same-feed exclusion, digest/roundup exclusion, and editorial-authority primary selection.
+  - Added unit tests (`src/lib/services/ai-clustering.test.ts`) and a multi-loop evaluation script (`scripts/eval-ai-clustering.ts`).
+
+### Changed
+- **Hybrid Story Clustering Fallback (`src/lib/utils/clustering.ts`):**
+  - Updated `clusterRelatedArticles` to group articles sharing a server-persisted `clusterId` first, while seamlessly falling back to deterministic keyword/CVE clustering when AI grouping is unconfigured, disabled, offline, or rate-limited.
+
 ## [1.4.11] - 2026-11-15
 
 ### Fixed

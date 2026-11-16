@@ -613,7 +613,7 @@ export interface ClusteredItem<T = any> {
 /**
  * Authority score to select the primary article when multiple sources cover the same story.
  */
-function getAuthorityScore(item: any): number {
+export function getAuthorityScore(item: any): number {
   const edType = item.feedEditorialType || "independent";
   let score = 0;
   if (edType === "official") score += 50;
@@ -642,21 +642,51 @@ export function clusterRelatedArticles<
     fullContentHtml?: string | null;
     publishedAt?: string | number | null;
     feedEditorialType?: string | null;
+    clusterId?: string | null;
   },
 >(items: T[]): ClusteredItem<T>[] {
   if (!items || items.length === 0) return [];
+
+  // Pre-collect any server-persisted AI/semantic cluster memberships
+  const persistedByCluster = new Map<string, T[]>();
+  for (const item of items) {
+    if (item.clusterId && item.clusterId.trim().length > 0) {
+      const key = item.clusterId.trim();
+      const arr = persistedByCluster.get(key);
+      if (arr) arr.push(item);
+      else persistedByCluster.set(key, [item]);
+    }
+  }
 
   const clusters: { primary: T; related: T[] }[] = [];
   const assigned = new Set<string>();
   const featuresMap = new Map<string, ReturnType<typeof extractArticleFeatures>>();
 
   for (const item of items) {
-    featuresMap.set(item.id, extractArticleFeatures(item));
+    if (!item.clusterId || !item.clusterId.trim()) {
+      featuresMap.set(item.id, extractArticleFeatures(item));
+    }
   }
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
     if (assigned.has(item.id)) continue;
+
+    const clusterKey = item.clusterId?.trim();
+    if (clusterKey) {
+      const group = [...(persistedByCluster.get(clusterKey) || [item])];
+      for (const member of group) {
+        assigned.add(member.id);
+      }
+      if (group.length > 1) {
+        group.sort((a, b) => getAuthorityScore(b) - getAuthorityScore(a));
+        const [primary, ...related] = group;
+        clusters.push({ primary, related });
+      } else {
+        clusters.push({ primary: item, related: [] });
+      }
+      continue;
+    }
 
     const featA = featuresMap.get(item.id)!;
     const currentGroup: T[] = [item];
@@ -665,6 +695,7 @@ export function clusterRelatedArticles<
     for (let j = i + 1; j < items.length; j++) {
       const candidate = items[j];
       if (assigned.has(candidate.id)) continue;
+      if (candidate.clusterId && candidate.clusterId.trim()) continue;
 
       const featB = featuresMap.get(candidate.id)!;
       if (areArticlesRelated(item, featA, candidate, featB)) {

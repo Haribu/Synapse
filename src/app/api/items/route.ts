@@ -67,6 +67,7 @@ export async function GET(req: Request) {
           isStarred: feedItems.isStarred,
           isWork: feedItems.isWork,
           workDispatchedAt: feedItems.workDispatchedAt,
+          clusterId: feedItems.clusterId,
           publishedAt: feedItems.publishedAt,
         })
         .from(feedItems)
@@ -142,6 +143,7 @@ export async function GET(req: Request) {
           isStarred: feedItems.isStarred,
           isWork: feedItems.isWork,
           workDispatchedAt: feedItems.workDispatchedAt,
+          clusterId: feedItems.clusterId,
           publishedAt: feedItems.publishedAt,
         })
         .from(feedItems)
@@ -174,6 +176,7 @@ export async function GET(req: Request) {
           isStarred: false,
           isWork: true,
           workDispatchedAt: rl.workDispatchedAt,
+          clusterId: null,
           publishedAt: rl.createdAt,
         }));
 
@@ -209,6 +212,7 @@ export async function GET(req: Request) {
         isStarred: feedItems.isStarred,
         isWork: feedItems.isWork,
         workDispatchedAt: feedItems.workDispatchedAt,
+        clusterId: feedItems.clusterId,
         publishedAt: feedItems.publishedAt,
       })
       .from(feedItems)

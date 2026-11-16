@@ -668,6 +668,15 @@ export async function syncAllFeeds(options?: {
       purgeYouTubeShorts();
     }
 
+    // Optional AI story clustering (no-op when SYNAPSE_AI_API_KEY / SYNAPSE_AI_BASE_URL is unset)
+    if (newArticlesTotal > 0) {
+      import("./ai-clustering")
+        .then(({ clusterRecentArticlesWithAi }) => clusterRecentArticlesWithAi())
+        .catch((e) =>
+          logger.warn("SyncEngine", `Optional AI story clustering skipped: ${e.message}`)
+        );
+    }
+
     return {
       totalFeeds: eligibleFeeds.length,
       healthyCount,

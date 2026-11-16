@@ -81,6 +81,7 @@ GET /api/items?q={searchQuery}&category={category}&unreadOnly=true&limit=25
       "isRead": false,
       "isStarred": true,
       "isWork": false,
+      "clusterId": "ai_8f3a91c20b14",
       "publishedAt": 1774320000,
       "createdAt": 1774321200
     }

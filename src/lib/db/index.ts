@@ -138,6 +138,9 @@ try {
 try {
   sqlite.exec("ALTER TABLE user_profiles ADD COLUMN work_digest_email TEXT;");
 } catch {}
+try {
+  sqlite.exec("ALTER TABLE feed_items ADD COLUMN cluster_id TEXT;");
+} catch {}
 
 // Seed / auto-classify known vendor feeds
 try {
@@ -193,6 +196,7 @@ sqlite.exec(`
     is_read INTEGER DEFAULT 0,
     is_starred INTEGER DEFAULT 0,
     ai_summary TEXT,
+    cluster_id TEXT,
     published_at INTEGER,
     created_at INTEGER NOT NULL
   );

@@ -51,6 +51,7 @@ export const feedItems = sqliteTable(
     userNotes: text("user_notes"),
     tags: text("tags"),
     aiSummary: text("ai_summary"),
+    clusterId: text("cluster_id"),
     publishedAt: integer("published_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   },
